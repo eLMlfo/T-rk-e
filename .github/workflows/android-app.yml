@@ -4,6 +4,9 @@
 # (ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD) yapılabilir; şimdilik geliştirme anahtarıyla imzalanır.
 name: android-app
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main, "feat/android-*"]
@@ -73,3 +76,10 @@ jobs:
           name: couchsubs-android-app
           path: dist/*.apk
           if-no-files-found: error
+      - name: APK'yı sürüm olarak yayınla (telefondan indirmek için)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete sesli -y --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create sesli dist/CouchSubs-android-debug.apk -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "CouchSubs + Türkçe sesli okuma" --notes "Telefon uygulaması. Ayarlar > Profil > 'Türkçeyi sesli oku'."
