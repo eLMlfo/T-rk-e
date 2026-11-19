@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+using CouchSubs.Core.Dubbing;
+
+namespace CouchSubs.Core;
+
+/// <summary>Bir satırı oyun dilinden hedef dile çevirir (cihaz üstünde).</summary>
+public interface ITextTranslator
+{
+    Task<string> TranslateAsync(string text, CancellationToken cancellationToken = default);
+
+    /// <summary>Son çevrilen altyazının seslendirilecek cümleleri (konuşmacısıyla); dublaj için.</summary>
+    IReadOnlyList<SpokenLine> SpokenLines(string text) => [];
+
+    /// <summary>
+    /// Çevirmen <see cref="Prefetch"/> destekliyor mu. Destekleyen (ör. çevrimiçi) çevirmende okuma hattı satırı ilk
+    /// karede çevirmeye başlar; temiz okunmayan satırı TV'ye ancak sonraki kare doğrulayınca gönderir: altyazı
+    /// belirirken okunan bozuk ilk kare ekrana hiç çıkmaz, bekleme de çeviri süresine gizlenir.
+    /// </summary>
+    bool Prefetches => false;
+
+    /// <summary>Satırın çevirisini arka planda başlatır; aynı metin için sonraki <see cref="TranslateAsync"/> onu bekler.</summary>
+    void Prefetch(string text) { }
+
+    /// <summary>
+    /// <see cref="TranslateAllAsync"/> bütün metinleri tek istekte çevirir (yapay zekâ); öyleyse "ekranı çevir" parça
+    /// parça istek göndermez.
+    /// </summary>
+    bool TranslatesTogether => false;
+
+    /// <summary>
+    /// Hat satır başındaki konuşan adını ("PRICE: …") ayırıp çevirmene yalnız cümleyi verir; ad buradan öğrenilir ve
+    /// sonraki cümlelerin içinde geçince çeviriden korunur (#287).
+    /// </summary>
+    void NoteSpeaker(string name) { }
+
+    /// <summary>
+    /// Birbirinden bağımsız metinleri ("ekranı çevir"deki menü satırları, görev yazıları) aynı sırada çevirir.
+    /// Varsayılan: sırayla tek tek.
+    /// </summary>
+    async Task<IReadOnlyList<string>> TranslateAllAsync(IReadOnlyList<string> texts, CancellationToken cancellationToken = default)
+    {
+        var result = new List<string>(texts.Count);
+        foreach (var text in texts) result.Add(await TranslateAsync(text, cancellationToken).ConfigureAwait(false));
+        return result;
+    }
+}
+
+public enum TranslatorStatus
+{
+    Ready,
+    /// <summary>Çeviri modeli henüz indirilmedi.</summary>
+    NeedsDownload,
+    /// <summary>Bu dil çifti desteklenmiyor.</summary>
+    Unsupported,
+    /// <summary>
+    /// Model kurulu ama cihaz üstü çeviri motoru bu bilgisayarda açılamadı (ör. CTranslate2 çalışma zamanı
+    /// yüklenemedi). Kullanıcı çevrimiçi bir motor seçebilir; oyun paketleri çalışmayı sürdürür.
+    /// </summary>
+    EngineFailed,
+}
+
+/// <summary>Kullanıcının düzeltebileceği çeviri hatası (model eksik, dil desteklenmiyor, motor açılamadı).</summary>
+public sealed class TranslatorException(TranslatorStatus status, Exception? innerException = null)
+    : Exception($"Translator not available: {status}", innerException)
+{
+    public TranslatorStatus Status { get; } = status;
+}
+
+/// <summary>
+/// Çevrimiçi çeviri anahtarı (DeepL ya da yapay zekâ hizmeti) denendiğinde ne çıktı. <c>ModelRejected</c>: hizmet model
+/// adını kabul etmedi (yalnız yapay zekâ hizmetlerinde). <c>Busy</c>: hizmete ulaşıldı ama şu an yoğun (5xx), yanıt
+/// zamanında gelmedi ya da dakikalık sınıra takıldı; anahtar reddedilmedi, internet de çalışıyor (yalnız yapay zekâ
+/// hizmetlerinde).
+/// </summary>
+public enum OnlineKeyState { Valid, Invalid, QuotaExceeded, Unreachable, ModelRejected, Busy }
+
+/// <param name="Used">Bu ay kullanılan karakter (geçerli anahtarda).</param>
+/// <param name="Limit">Aylık sınır.</param>
+public sealed record OnlineKeyCheck(OnlineKeyState State, long Used = 0, long Limit = 0);

@@ -1,0 +1,266 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+package com.couchsubs.mobile.core
+
+import kotlin.math.abs
+
+/** Yazının yeri, içinde bulunduğu alanın kenarlarına oranla (0–1, üstten ve soldan). */
+data class TextBox(val left: Double, val top: Double, val right: Double, val bottom: Double) {
+    fun union(other: TextBox) =
+        TextBox(minOf(left, other.left), minOf(top, other.top), maxOf(right, other.right), maxOf(bottom, other.bottom))
+
+    /** Bu kutu [area] içindeki oranlarsa, aynı yerin [area]'yı içeren çerçevedeki oranları. */
+    fun placedIn(area: TextBox): TextBox {
+        val width = area.right - area.left
+        val height = area.bottom - area.top
+        return TextBox(area.left + left * width, area.top + top * height, area.left + right * width, area.top + bottom * height)
+    }
+
+    /**
+     * Ekranın ortasındaki altyazının kutusu ortaya göre simetrik genişletilir: yazı tanıma satırın bir ucunu
+     * okuyamazsa çeviri yine ortalanır ve İngilizcenin tamamını örter. Köşedeki yazıya dokunulmaz.
+     */
+    fun centeredOnScreen(): TextBox {
+        val middle = (left + right) / 2
+        if (middle <= 0.3 || middle >= 0.7) return this
+        return copy(left = maxOf(0.0, minOf(left, 1 - right)), right = minOf(1.0, maxOf(right, 1 - left)))
+    }
+}
+
+/** Karede okunan alan (oranlar); masaüstüyle aynı varsayılan: alt orta bölge. */
+data class CropRegion(val top: Double = 0.62, val bottom: Double = 0.97, val left: Double = 0.14, val right: Double = 0.86) {
+    val box get() = TextBox(left, top, right, bottom)
+}
+
+/**
+ * Yazı tanımanın bulduğu bir satır; kutu okunan alana göredir, bilinmiyorsa null. [words]: okuyucu sözcüklerin yerini de
+ * veriyorsa (ML Kit) sözcükler, satırla aynı oranlarda; kumanda simgesini bulmak için ([ButtonIcons]). [icons]: metindeki
+ * her [ButtonIcons.MARKER] için, sırasıyla, simgenin yeri ve okunan hali.
+ */
+data class TextLine(val text: String, val box: TextBox? = null, val words: List<TextWord>? = null, val icons: List<IconSlot>? = null)
+
+/** Yazı tanımanın bulduğu bir sözcük ve yeri (okunan alanın kenarlarına oranla). */
+data class TextWord(val text: String, val box: TextBox)
+
+/**
+ * Yazının içindeki kumanda simgesi ("Hold △ to sprint"). Yazı tanıma simgeyi harf sanır ("A", "Ä") ya da hiç okumaz;
+ * [text] okunan hali (boş olabilir), [box] karedeki yeri, [image] kareden kesilen simgenin PNG'si (data: adresi;
+ * kesilemediyse null). Windows: Reading.cs IconSlot.
+ */
+data class IconSlot(val box: TextBox, val text: String, val image: String? = null)
+
+/** Bir karenin okunan satırları, yukarıdan aşağı (Windows: Reading.cs, Mac: Reading.swift). */
+class Reading(lines: List<TextLine>) {
+    val lines: List<TextLine> = lines.filter { it.text.isNotBlank() }
+
+    companion object {
+        val Empty = Reading(emptyList())
+
+        /** [joiningRows]: aynı satırdaki iki parça arasındaki en büyük boşluk (alan genişliğine oranla). */
+        const val ROW_GAP = 0.05
+
+        fun fromText(text: String) = Reading(text.replace("\r\n", "\n").split('\n').map { TextLine(it.trim()) })
+
+        /** Aynı satırdaki iki sözcük arasındaki boşluk ayrı yazılara mı işaret ediyor (menü ile gösterge gibi). */
+        fun isSeparateText(gap: Double, lineHeight: Double, imageWidth: Double) =
+            gap > lineHeight * 4 && gap > imageWidth * 0.12
+
+        private fun wordCount(text: String) = text.split(Regex("\\s+")).count { it.isNotEmpty() }
+    }
+
+    val text: String get() = lines.joinToString("\n") { it.text }
+
+    /** Bütün satırları içine alan kutu; hiçbir satırın yeri bilinmiyorsa null. */
+    val box: TextBox?
+        get() {
+            var total: TextBox? = null
+            for (line in lines) line.box?.let { total = total?.union(it) ?: it }
+            return total
+        }
+
+    /** Oyunun düğme ipuçları ("R2 Swing", "△ Pick up") çıkarılmış hali; bunlar altyazı değildir. */
+    /**
+     * Düğme ipuçları ("R2 Swing", "Press @ to open the map") çıkarılmış hali. Simgesi bulunmuş satır (`withButtonIcons`;
+     * "Ekranı çevir" ve ek alanlar) kalır: simgesiyle çevrilir, düğme görünür. Simgesi bulunamayan ipucu atılır; çevrilmediği
+     * için üstü örtülmez (Windows: WithoutButtonPrompts).
+     */
+    fun withoutButtonPrompts() = Reading(lines.filter { !it.icons.isNullOrEmpty() || !ButtonPrompts.isPrompt(it.text) })
+
+    /** Yazı tanımanın uydurduğu sözcük çöpleri ("ou$3e") ayıklanmış hali. */
+    fun withoutOcrNoise() = Reading(lines.map { it.copy(text = OcrNoise.clean(it.text)) })
+
+    /** Yazının içindeki kumanda simgeleri [ButtonIcons.MARKER] ile işaretlenmiş hali (bkz. [ButtonIcons.mark]). */
+    fun withButtonIcons() = Reading(ButtonIcons.joinHints(this).lines.map { ButtonIcons.mark(it) })
+
+    /**
+     * Aynı satırda yan yana okunan parçalar soldan sağa tek satır olur. Renkli konuşan adını ("Arthur:", RDR2) yazı
+     * tanıma cümleden ayrı okuyabiliyor; parçalar yalnız üst kenarlarına göre dizilince ad cümlenin sonuna düşüyor ya da
+     * ayrı blok sayılıp atılıyordu. Yatayda aralarında en çok [ROW_GAP] (alan genişliğine oranla) olan parçalar
+     * birleşir; uzaktaki köşe yazısı ayrı kalır (Mac: Reading.joiningRows, Windows: Reading.JoiningRows).
+     */
+    fun joiningRows(): Reading {
+        if (lines.size < 2 || lines.any { it.box == null }) return this
+        val rows = mutableListOf<TextLine>()
+        for (line in lines.sortedBy { it.box!!.left }) {
+            val box = line.box!!
+            val index = rows.indexOfFirst { sameRow(box, it.box!!) }
+            if (index >= 0) {
+                val row = rows[index]
+                rows[index] = TextLine(row.text + " " + line.text, row.box!!.union(box))
+            } else {
+                rows.add(line)
+            }
+        }
+        return Reading(rows.sortedBy { it.box!!.top })
+    }
+
+    private fun sameRow(next: TextBox, row: TextBox): Boolean {
+        val overlap = minOf(next.bottom, row.bottom) - maxOf(next.top, row.top)
+        val smaller = minOf(next.bottom - next.top, row.bottom - row.top)
+        if (smaller <= 0 || overlap < smaller * 0.6) return false
+        return next.left - row.right <= ROW_GAP
+    }
+
+    /**
+     * Alandaki altyazı bloğu: satırlar yerlerine göre bloklara ayrılır; ortalanmış ve menü olmayan en alttaki blok
+     * altyazıdır. Ortalanmış blok yoksa en az üç sözcüklü, menü olmayan en alttaki blok alınır. Satırların yeri
+     * bilinmiyorsa okuma olduğu gibi kalır. [area]: okunan alanın karedeki yeri. Tek satırlık etkileşim/HUD etiketi
+     * ("TAKE AMMO PACK (0/3)", [ButtonPrompts.isActionLabel]) altyazı bloğu sayılmaz.
+     */
+    fun subtitleBlock(area: TextBox): Reading {
+        if (lines.isEmpty() || lines.any { it.box == null }) return if (isActionLabel) Empty else this
+        val blocks = mutableListOf<MutableList<TextLine>>()
+        for (line in lines.sortedBy { it.box!!.top }) {
+            val placed = line.box!!.placedIn(area)
+            val index = blocks.indexOfLast { belongs(placed, it, area) }
+            if (index >= 0) blocks[index].add(line) else blocks.add(mutableListOf(line))
+        }
+        val candidates = blocks.map { Reading(it) }.filter { !it.isMenu && !it.isActionLabel }
+        val centered = candidates.filter { reading ->
+            val placed = reading.box!!.placedIn(area)
+            abs((placed.left + placed.right) / 2 - 0.5) <= 0.12
+        }
+        if (centered.isNotEmpty()) return centered.maxBy { it.box!!.bottom }
+        return candidates.filter { wordCount(it.text) >= 3 }.maxByOrNull { it.box!!.bottom } ?: Empty
+    }
+
+    private fun belongs(box: TextBox, block: List<TextLine>, area: TextBox): Boolean {
+        val last = block.last().box!!.placedIn(area)
+        val height = maxOf(box.bottom - box.top, last.bottom - last.top)
+        if (box.top - last.bottom >= height * 0.8 || box.top < last.top) return false
+        val overlap = minOf(box.right, last.right) - maxOf(box.left, last.left)
+        val narrower = minOf(box.right - box.left, last.right - last.left)
+        return overlap > 0 && overlap >= narrower * 0.5
+    }
+
+    /** Alt alta kısa ve noktalamasız satırlar ("MAP", "HELP", "SOCIAL CLUB") menüdür, konuşma değil. */
+    internal val isMenu: Boolean
+        get() = lines.size >= 3 && lines.all { wordCount(it.text) <= 3 && !SubtitleStabilizer.endsSentence(it.text) }
+
+    /** Tek başına okunan etkileşim/HUD etiketi (GTA 6: "SIT", "• ADD TO TRUNK"). */
+    internal val isActionLabel: Boolean
+        get() = lines.size == 1 && ButtonPrompts.isActionLabel(lines[0].text)
+}
+
+/** Oyunların kumanda ipuçlarını tanır: "R2 Swing", "L1 + R1 Spartan Rage", "△ Pick up", "Press ✕ to jump". */
+object ButtonPrompts {
+    private val buttons = setOf(
+        "r1", "r2", "r3", "l1", "l2", "l3", "options", "touchpad",
+        "✕", "×", "⨯", "✖", "○", "◯", "●", "□", "▢", "◻", "■", "△", "▲", "⨂",
+    )
+    /** Simge yazı tanımada harfe dönüşebilir; yalnız ipucu kalıbında düğme sayılır. */
+    private val lookalikes = setOf("X", "O")
+    private val verbs = setOf("press", "hold", "tap", "push", "use", "mash", "release")
+    private val separators = Regex("[ \\t+/]+")
+    private const val BRACKETS = "()[]{}<>「」"
+
+    private fun isButton(token: String) = token.lowercase() in buttons
+
+    fun isPrompt(line: String): Boolean {
+        val tokens = line.split(separators).map { it.trim { c -> c in BRACKETS } }.filter { it.isNotEmpty() }
+        if (tokens.isEmpty()) return false
+        val first = tokens[0]
+        val words = tokens.count { !isButton(it) && it.any { c -> c.isLetter() } }
+        if (isButton(first)) return words <= 5
+        if (isButton(tokens.last()) && words <= 4 && !SubtitleStabilizer.endsSentence(line)) return true
+        if (first in lookalikes && tokens.size in 2..4 && tokens[1][0].isUpperCase() && !SubtitleStabilizer.endsSentence(line))
+            return true
+        if (first.lowercase() in verbs && tokens.size in 2..10 && (isButton(tokens[1]) || tokens[1] in lookalikes)) return true
+        return isIconPrompt(tokens, line)
+    }
+
+    private val connectors = setOf("and", "or")
+    /** Büyük harfle yazılmış kısa İngilizce sözcükler tuş kalıntısı sayılmaz ("HOLD ON TO IT"). */
+    private val shortWords = setOf("on", "up", "it", "in", "at", "out", "off", "me", "us", "him", "her", "my", "an", "the", "you", "its")
+    /** "to"dan sonra eylem yerine bunlar gelirse konuşmadır ("Hold to your course"). */
+    private val objects = setOf(
+        "the", "a", "an", "my", "your", "his", "her", "our", "their", "me", "you", "him", "them", "us", "it", "this", "that",
+    )
+
+    /**
+     * Tuş simgesinin yazı tanımadaki kalıntısı: harfsiz ("@", "•", "9"), tek karakter ("D", "i"; "a" hariç), tuş adı,
+     * "and"/"or" ya da büyük harf içeren en çok üç karakter ("LI", "RE", "Rd", "RB").
+     */
+    private fun isIconRemnant(token: String): Boolean {
+        if (token.none { it.isLetter() } || isButton(token) || token in lookalikes || token.lowercase() in connectors) return true
+        if (token.length == 1) return token != "a"
+        return token.length <= 3 && token.any { it.isUpperCase() } && token.lowercase() !in shortWords
+    }
+
+    /**
+     * GTA 6: "Press/Hold/Use ... to ..." ipucunda tuş simgesi resimdir; yazı tanıma onu ya hiç okumaz ("Press  to open
+     * the map") ya da harf/simge kalıntısı olarak okur ("Press @ to", "Hold I LI to", "Press [RB] to take cover").
+     * Çevrilince tuş kaybolur ve konuşma yerine ipucu görünür. Fiil ile "to" arasında en çok üç kalıntı olabilir; ünlem,
+     * soru, tırnak ya da konuşmacı adı (":") taşıyan satır ve "to"dan sonra eylem yerine nesne gelen satır ("Hold to
+     * your course") konuşma sayılır (Mac: ButtonPrompts.isIconPrompt, Windows: ButtonPrompts.IsIconPrompt, havuz:
+     * server/pool/src/prompts.js).
+     */
+    private fun isIconPrompt(tokens: List<String>, line: String): Boolean {
+        if (line.any { it in "!?\"“”:" }) return false
+        val all = tokens.dropWhile { token -> token.none { it.isLetter() } }
+        if (all.size < 3 || all[0].lowercase() !in verbs) return false
+        val to = (1 until all.size).firstOrNull { all[it].lowercase() == "to" } ?: return false
+        if (to > 4 || !all.subList(1, to).all(::isIconRemnant)) return false
+        val next = all.drop(to + 1).firstOrNull { token -> token.any { it.isLetter() } } ?: return false
+        return all.size - to - 1 <= 10 && next.lowercase() !in objects
+    }
+
+    /**
+     * `isIconPrompt` kalıbındaki satırın yazı tanıma sözcüklerinde fiilin ve "to"nun sırası; aralarında en az bir tuş
+     * kalıntısı yoksa ya da kalıp tutmazsa null. Aradaki kalıntılar ("I LI", "(9 0", "2 and R2") simgenin okunuşudur:
+     * `ButtonIcons.mark` onları kareden kesilecek simge yapar (Windows: ButtonPrompts.IconRemnantSpan).
+     */
+    internal fun iconRemnantSpan(words: List<String>, line: String): Pair<Int, Int>? {
+        val tokens = line.split(separators).map { it.trim { c -> c in BRACKETS } }.filter { it.isNotEmpty() }
+        if (!isIconPrompt(tokens, line)) return null
+        val verb = words.indexOfFirst { word -> word.trim { c -> c in BRACKETS }.any { it.isLetter() } }
+        if (verb < 0 || words[verb].trim { c -> c in BRACKETS }.lowercase() !in verbs) return null
+        var end = verb + 2
+        while (end < words.size && end <= verb + 4) {
+            if (words[end].trim { c -> c in BRACKETS }.lowercase() == "to") {
+                val between = words.subList(verb + 1, end)
+                    .flatMap { it.split(separators) }
+                    .map { it.trim { c -> c in BRACKETS } }
+                    .filter { it.isNotEmpty() }
+                return if (between.all(::isIconRemnant)) Pair(verb, end) else null
+            }
+            end++
+        }
+        return null
+    }
+
+    /** "and"/"or": iki tuş kalıntısının arasındaki bağlaç, simge değildir ("Release 2 and R2 to breathe out"). */
+    internal fun isConnector(token: String) = token.lowercase() in connectors
+
+    /**
+     * Etkileşim/HUD etiketi: en çok üç sözcük, hiç küçük harf yok (en az bir büyük harf var), cümle sonu noktalaması
+     * yok. GTA 6'nın etkileşim yazıları ("TAKE AMMO PACK (0/3)", "• ADD TO TRUNK", "TURN ON") ve ekipman yazıları
+     * ("BENCH PRESS") altyazı gibi çevriliyordu (#404). Konuşma küçük harf içerir ya da noktalamayla biter ("Yes.",
+     * "OKAY.", "WHAT?"); büyük/küçük harfi olmayan yazılara dokunulmaz. Yalnız tek başına okunan satıra uygulanır
+     * (Mac: ButtonPrompts.isActionLabel, Windows: ButtonPrompts.IsActionLabel).
+     */
+    fun isActionLabel(line: String): Boolean {
+        val words = line.split(Regex("\\s+")).count { word -> word.any { it.isLetter() } }
+        return words in 1..3 && line.any { it.isUpperCase() } && line.none { it.isLowerCase() } &&
+            !SubtitleStabilizer.endsSentence(line)
+    }
+}

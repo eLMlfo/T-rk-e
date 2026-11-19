@@ -1,0 +1,155 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Sürüm: v* etiketi gönderilince Mac, Windows ve TV paketlerini derler ve GitHub sürümü olarak yayınlar.
+# Beta etiketleri de (ör. v0.1.0-beta.6) "en son sürüm" olarak yayınlanır: README'deki
+# releases/latest/download/… bağlantıları ön sürümleri görmez. Dosya adları sürüm taşımaz, bağlantılar hep çalışır.
+#
+# Mac imzası ve Apple onayı isteğe bağlıdır; şu depo sırları tanımlıysa yapılır:
+#   MAC_CERTIFICATE_P12       Developer ID Application sertifikası (.p12, base64)
+#   MAC_CERTIFICATE_PASSWORD  .p12 dosyasının parolası
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   notarytool için (uygulamaya özel parola)
+# Sırlar yoksa Mac paketi imzasız çıkar.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    needs: android
+    uses: ./.github/workflows/windows.yml
+    with:
+      with-android: true
+
+  android:
+    uses: ./.github/workflows/tv-android.yml
+    secrets: inherit
+    # TV paketi TV_KEYSTORE_* sırlarıyla imzalanmalı; yoksa sürüm durur (geliştirme anahtarına düşmez).
+    with:
+      require-signing: true
+  mac:
+    needs: android
+    runs-on: macos-26
+    env:
+      HAS_SIGNING: ${{ secrets.MAC_CERTIFICATE_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: chiaki-ng
+        run: git submodule update --init --depth 1 third-party/chiaki-ng
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Samsung ve Android TV kurulum yardımcısı Native AOT ile derlenir; Microsoft'un .NET'i gerekir (Homebrew'unki değil).
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: couchsubs-android
+          path: android-apk
+
+      - name: Araçlar
+        run: |
+          # OpenSSL ve json-c uygulama için kaynaktan derlenir (build-chiaki-macos.sh); openssl@3 yalnız Sparkle imzası için.
+          brew install cmake ninja pkg-config protobuf openssl@3 xcodegen
+          npm install -g @webos-tools/cli
+          echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: İmza sertifikası
+        if: env.HAS_SIGNING == 'true'
+        env:
+          MAC_CERTIFICATE_P12: ${{ secrets.MAC_CERTIFICATE_P12 }}
+          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/imza.keychain-db"
+          KCPW="$(openssl rand -hex 16)"
+          security create-keychain -p "$KCPW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPW" "$KC"
+          echo "$MAC_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MAC_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          ID="$(security find-identity -v -p codesigning "$KC" | grep -o '"Developer ID Application: .*"' | head -1 | tr -d '"')"
+          [ -n "$ID" ] || { echo "Developer ID Application sertifikası bulunamadı"; exit 1; }
+          xcrun notarytool store-credentials couchsubs --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --keychain "$KC"
+          {
+            echo "DEVELOPER_ID=$ID"
+            echo "NOTARY_PROFILE=couchsubs"
+            echo "NOTARY_KEYCHAIN=$KC"
+          } >> "$GITHUB_ENV"
+
+      - name: Paketle
+        run: ANDROID_APK="$(ls android-apk/*.apk | head -1)" ./scripts/package-mac.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couchsubs-mac
+          path: dist/*.zip
+          if-no-files-found: error
+
+  tv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Paketle
+        run: |
+          npm install -g @webos-tools/cli
+          ./scripts/package-tv.sh
+          ./scripts/package-tizen.sh
+          # Masaüstü uygulamaları imzalar; elle kurmak isteyenler için kaynak klasör de verilir.
+          rm -f dist/tv-app/couchsubs-samsung_*.wgt
+          (cd dist/tv-tizen/app && zip -qr ../../tv-app/CouchSubs-samsung-kaynak.zip .)
+          ls dist/tv-app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couchsubs-tv
+          path: dist/tv-app/*
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [windows, mac, tv, android]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Dosyaları hazırla
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${VERSION%%-*}"
+          mkdir -p out
+          cp LICENSE THIRD-PARTY-NOTICES.md artifacts/couchsubs-windows/
+          # Sabit adlar: README'deki tek tıkla indirme bağlantıları her sürümde aynı kalır.
+          (cd artifacts/couchsubs-windows && zip -qr "$GITHUB_WORKSPACE/out/CouchSubs-windows-x64.zip" .)
+          cp artifacts/couchsubs-mac/*.zip out/CouchSubs-macos.zip
+          cp artifacts/couchsubs-tv/* artifacts/couchsubs-android/*.apk out/
+          cp artifacts/couchsubs-windows-installer/* out/
+          (cd out && sha256sum * > SHA256SUMS.txt)
+          ls -l out
+
+      - name: Sürümü yayınla
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* --title "CouchSubs ${GITHUB_REF_NAME#v}" \
+            --notes-file docs/surum-notlari.md --latest

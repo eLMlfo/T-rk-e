@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- required_version 2.4: 2016 Samsung TV'ler (Tizen 2.4) de kurabilsin; yeni TV'ler daha düşük sürüm isteyen paketi
+     de kurar. Issue #71'de 2016 model 40KU7000'de (Tizen 2.4) doğrulandı. İzinlerin hepsi "public" düzeyde; Samsung'un
+     herkese verdiği geliştirici sertifikası yeter. Sayfa ES5 ile yazıldığı için eski tarayıcılarda da çalışır. -->
+<!-- required_version 3.0: 2017 Samsung TV'ler (Tizen 3.0) de kurabilsin; yeni TV'ler daha düşük sürüm isteyen paketi
+     de kurar. İzinlerin hepsi "public" düzeyde; Samsung'un herkese verdiği geliştirici sertifikası yeter. Sayfa ES5 ile
+     yazıldığı için Tizen 3.0'ın tarayıcısında (Chromium 47) da çalışır. -->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="https://github.com/yorulmazsinan/couchsubs" version="0.9.32" viewmodes="maximized">
+    <tizen:application id="CouchSubsT.CouchSubs" package="CouchSubsT" required_version="2.4"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+    <!-- 21:9 / 32:9 ultrawide ekranlarda (Samsung Odyssey G8 3440x1440, #304) uygulama yüzeyi ekranın tamamı olur; yoksa
+         Tizen yüzeyi 16:9 kutuda tutar ve HDMI görüntüsü dört yanda siyah boşlukla küçük çıkar. Değer "fullscreen":
+         Samsung'un belgelediği "extensive" gerçek ultrawide ekranda etkisiz kaldı, "fullscreen" 32:9 Samsung ekranda (SH37C)
+         denendi (jellyfin-tizen #231/#315). 16:9 TV'de yüzey zaten tam ekran olduğundan bir şey değişmez,
+         ayarı tanımayan eski modeller yok sayar. Samsung yüzeyi ancak sayfanın görünümü "width=device-width" ise genişletir;
+         paket bu yüzden öyle üretilir (package-tizen.sh), asıl görünümü platform.js ayarlar. -->
+    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="fullscreen"/>
+    <icon src="icon.png"/>
+    <name>CouchSubs</name>
+    <author>Enmera</author>
+    <license>AGPL-3.0-only</license>
+    <access origin="*" subdomains="true"/>
+    <tizen:allow-navigation>*</tizen:allow-navigation>
+    <tizen:privilege name="http://tizen.org/privilege/tv.window"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/network.get"/>
+    <!-- "http://tizen.org/privilege/power" yok: Samsung TV'lerde Tizen Power API'si bulunmaz, izin TV'nin izin listesinde
+         değildir. Tizen 2.4 (2016 TV'ler) tanımadığı izni içeren paketi "install failed[118]" ile reddeder (#497); yeni
+         TV'ler yok sayar. İzin eklerken scripts/tv-tizen.test.js'teki TV listesine bakın. -->
+    <!-- Samsung ağ API'si (webapis.network.getIp): Tizen sistem bilgisi adres vermezse TV kendi ağını bilsin. -->
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+    <tizen:profile name="tv-samsung"/>
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable"
+                   encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>

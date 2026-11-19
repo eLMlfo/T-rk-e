@@ -1,0 +1,464 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Ana ekran (tuval: Telefon-Ana, -Calisiyor, -Tur) ve oyun paketleri (-Paketler). Uygulama ve paketler ücretsiz.
+package com.couchsubs.mobile.ui
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.text.format.DateUtils
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.couchsubs.mobile.R
+import com.couchsubs.mobile.Services
+import com.couchsubs.mobile.service.FramePreview
+import com.couchsubs.mobile.service.LiveStatus
+import com.couchsubs.mobile.settings.SubtitleTarget
+import com.couchsubs.mobile.tv.InstalledTv
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+
+/** Turda vurgulanan öğeler (TASARIM-MOBIL.md §10, tuval Telefon-Tur); [radius] öğenin köşesi (delik ona göre çizilir). */
+private enum class TourStep(val title: Int, val body: Int, val radius: Dp) {
+    START(R.string.tour1_title, R.string.tour1_body, Tokens.Radius.control),
+    TARGET(R.string.tour2_title, R.string.tour2_body, Tokens.Radius.tile),
+    PACKS(R.string.tour3_title, R.string.tour3_body, Tokens.Radius.tile),
+    PROFILE(R.string.tour4_title, R.string.tour4_body, Tokens.Radius.control),
+}
+
+/** Tanıtım popup'ı açıkken ana ekranın bulanıklığı. */
+private val PROMO_BLUR = 16.dp
+
+/** Boşta ↔ çeviri ekranı geçişinin süresi (ms). */
+private const val MOTION_MS = 250
+
+/** Paket kimliğinden kısa ad ve kod (tuvaldeki karolar). */
+fun packShort(id: String, title: String): Pair<String, String> = when (id) {
+    "gta-v" -> "GTA" to "GTA V"
+    "red-dead-redemption-2" -> "RDR" to "Red Dead 2"
+    "mafia-the-old-country" -> "MAF" to "Mafia: TOC"
+    "assassins-creed-shadows" -> "ACS" to "AC Shadows"
+    "death-stranding-2" -> "DS2" to "Death Str. 2"
+    "call-of-duty-modern-warfare-2019" -> "MW" to "CoD MW 2019"
+    else -> title.filter { it.isLetterOrDigit() }.take(3).uppercase() to title
+}
+
+/** "190 bin satır" */
+fun linesText(context: Context, entries: Int): String =
+    if (entries >= 1000) context.getString(R.string.lines_thousands, (entries + 500) / 1000) else context.getString(R.string.lines_count, entries)
+
+fun durationText(context: Context, millis: Long): String {
+    val minutes = millis / 60_000
+    return if (minutes >= 60) context.getString(R.string.duration_hours, minutes / 60, minutes % 60) else context.getString(R.string.duration_minutes, minutes)
+}
+
+@Composable
+fun MainScreen(
+    status: LiveStatus,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onPhoneView: () -> Unit,
+    onTarget: () -> Unit,
+    onDemo: () -> Unit = {},
+    onExitDemo: () -> Unit = {},
+    onPairing: () -> Unit,
+    onPacks: () -> Unit,
+    onProfile: () -> Unit,
+    onSettings: () -> Unit,
+    onHistory: () -> Unit = {},
+    onTvUpdate: (InstalledTv) -> Unit = {},
+    /** Ana ekran en üstte (geçişte ya da üstünde başka ekran varken false): tanıtım popup'ı yalnız o zaman açılır. */
+    onHome: Boolean = true,
+) {
+    val context = LocalContext.current
+    val settings = Services.settings
+    val bounds = remember { mutableStateMapOf<TourStep, Rect>() }
+    var tour by remember { mutableStateOf(if (settings.tourShown) null else TourStep.START) }
+    val xbox = settings.xbox
+    val paired = if (xbox) settings.xboxConsole != null && Services.xboxAuth.signedIn else settings.console != null
+    fun mark(step: TourStep) = Modifier.onGloballyPositioned { bounds[step] = it.boundsInRoot() }
+    val topBar: @Composable () -> Unit = {
+        TopBar {
+            // iPhone'daki gibi: geçmiş, ayarlar, profil.
+            IconAction(CouchIcons.History, stringResource(R.string.history), onHistory)
+            SettingsAction(onSettings)
+            Box(mark(TourStep.PROFILE)) { ProfileAction(onProfile) }
+        }
+    }
+
+    // Kendi ürünlerimizin tanıtımı (promo.json): yalnız boştaki ana ekranda, girişten 10 sn sonra; oturum, deneme,
+    // kurulum ve tur sırasında asla. Açıkken ana ekran bulanıklaşır (Android 12+; altında yalnız karartma).
+    val promo by com.couchsubs.mobile.promo.PromoController.ready.collectAsState()
+    val promoShown = promo?.let { ready ->
+        val moment = com.couchsubs.mobile.promo.PromoMoment(onHome = onHome, sessionActive = status.running, demo = status.demo,
+            onboarding = Routes.next() != Routes.MAIN, tour = tour != null && !status.demo,
+            inAppMs = System.currentTimeMillis() - com.couchsubs.mobile.promo.PromoController.foregroundAtMs)
+        val record = com.couchsubs.mobile.promo.PromoController.record(context)
+        ready.takeIf { com.couchsubs.mobile.promo.PromoPolicy.shouldShow(it.popup, record, System.currentTimeMillis(), moment) }
+    }
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().then(if (promoShown != null) Modifier.blur(PROMO_BLUR) else Modifier)) {
+            // Başlatınca ve durdurunca boşta ve çeviri ekranları solarak yer değiştirir.
+            AnimatedContent(status.running, transitionSpec = { fadeIn(tween(MOTION_MS)) togetherWith fadeOut(tween(MOTION_MS)) },
+                label = "running") { running ->
+                if (running) RunningScreen(status, topBar, if (status.demo) onExitDemo else onStop, onPhoneView)
+                else ScreenScaffold(top = topBar, bottom = {
+                    // PS5 eşlenmemişse (kurulum atlandı) başlatmak yerine eşleme açılır.
+                    if (paired) PrimaryButton(stringResource(R.string.start), modifier = mark(TourStep.START), onClick = onStart)
+                    else {
+                        PrimaryButton(stringResource(R.string.main_pair_button), modifier = mark(TourStep.START), onClick = onPairing)
+                        // Kurulum bitmeden de uygulama örnek görüntülerle denenebilir.
+                        GhostButton(stringResource(R.string.demo_mode_try), Modifier.fillMaxWidth(), onClick = onDemo)
+                    }
+                }) {
+                    if (paired) Heading(stringResource(R.string.main_ready), stringResource(R.string.main_ready_body))
+                    else {
+                        Heading(stringResource(R.string.main_unpaired), stringResource(R.string.main_unpaired_body))
+                        NoteTile(stringResource(R.string.main_unpaired_note), Tokens.Color.secondary)
+                    }
+                    AnimatedNote(status.error)
+                    TvAppUpdateCard(onTvUpdate)
+                    // Telefon ana ekranı (TASARIM.md): PS5 ve Altyazı durum karoları ilgili ayarı açar (`›`).
+                    TwoColumns(
+                        { if (xbox) StatusTile(CouchIcons.Gamepad, "Xbox", settings.xboxConsole?.name ?: stringResource(R.string.profile_not_paired), it,
+                            corner = { Pill(stringResource(R.string.beta)) }, chevron = true, onClick = onPairing)
+                          else StatusTile(CouchIcons.Gamepad, "PS5", settings.console?.name ?: stringResource(R.string.profile_not_paired), it,
+                            corner = { if (settings.console != null) StatusLabel(stringResource(R.string.main_paired)) }, chevron = true, onClick = onPairing) },
+                        { StatusTile(if (settings.target == SubtitleTarget.TV) CouchIcons.Tv else CouchIcons.Smartphone, stringResource(R.string.main_target),
+                            if (settings.target == SubtitleTarget.TV) settings.tvName ?: stringResource(R.string.main_target_tv) else stringResource(R.string.main_target_phone),
+                            it.then(mark(TourStep.TARGET)), chevron = true, onClick = onTarget) },
+                    )
+                    // Paket karosu: başlık ve not tek satır, sağda yalnız `›`; paketler kapalıysa nötr "Kapalı" etiketi.
+                    Box(mark(TourStep.PACKS)) {
+                        Tile(Modifier.fillMaxWidth(), onClick = onPacks) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.inline)) {
+                                TileIcon(CouchIcons.Package, Tokens.Color.pro)
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Tokens.Space.hair)) {
+                                    Text(stringResource(R.string.main_packs_title), style = Tokens.Type.headline, color = Tokens.Color.text,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(stringResource(R.string.main_packs_games), style = Tokens.Type.caption, color = Tokens.Color.secondary,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                if (!settings.packsEnabled) Pill(stringResource(R.string.main_packs_off))
+                                Chevron()
+                            }
+                        }
+                    }
+                    // Çeviri motoru ve son oturum durum değil ayar bilgisidir: tek bilgi karosunda iki satır.
+                    InfoCard(listOf(
+                        { InfoRow(stringResource(R.string.main_engine), status.engineLabel.ifEmpty { engineName(context) }, onClick = onSettings) },
+                        { InfoRow(stringResource(R.string.main_last_session),
+                            if (settings.lastSessionMs > 0) durationText(context, settings.lastSessionMs) else "—", onClick = onHistory) },
+                    ))
+                    DeveloperSignature()
+                }
+            }
+            if (!status.demo) tour?.let { step ->
+                TourOverlay(step, bounds[step], onSkip = {
+                    settings.tourShown = true
+                    tour = null
+                }, onNext = {
+                    val next = TourStep.entries.getOrNull(step.ordinal + 1)
+                    if (next == null) settings.tourShown = true
+                    tour = next
+                })
+            }
+        }
+        promoShown?.let { ready -> PromoOverlay(ready) { com.couchsubs.mobile.promo.PromoController.dismissed(context, ready.popup) } }
+    }
+}
+
+/** Son satırın ölçümleri tek satırda; bilinmeyen değer yazılmaz, hiç ölçüm yoksa null. */
+fun metricsText(context: Context, pair: com.couchsubs.mobile.core.ShownPair): String? {
+    val total = pair.totalMs ?: return null
+    val parts = mutableListOf<String>()
+    pair.ocrMs?.let { parts.add(context.getString(R.string.metrics_ocr, it)) }
+    if (pair.origin == "paket") parts.add(context.getString(R.string.metrics_pack))
+    else pair.translationMs?.let { parts.add(context.getString(R.string.metrics_translation, it)) }
+    parts.add(context.getString(R.string.metrics_delay, total))
+    return parts.joinToString(" · ")
+}
+
+fun engineName(context: Context): String = when (Services.settings.engine) {
+    com.couchsubs.mobile.settings.EngineChoice.FREE -> context.getString(R.string.engine_free_short)
+    com.couchsubs.mobile.settings.EngineChoice.DEEPL -> "DeepL"
+    com.couchsubs.mobile.settings.EngineChoice.GEMINI -> "Gemini"
+    com.couchsubs.mobile.settings.EngineChoice.OPENAI -> "OpenAI"
+    com.couchsubs.mobile.settings.EngineChoice.CLAUDE -> "Claude"
+}
+
+/** Deneme modunda çeviri ekranının üstü: "Deneme modu" rozeti, "Çık" ve hattın okuduğu örnek kare (iPhone ile aynı). */
+@Composable
+private fun DemoHeader(onExit: () -> Unit) {
+    DisposableEffect(Unit) {
+        FramePreview.watch(true)
+        onDispose { FramePreview.watch(false) }
+    }
+    val frame by FramePreview.frame.collectAsState()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Pill(stringResource(R.string.demo_mode), pro = true)
+        Spacer(Modifier.weight(1f))
+        GhostButton(stringResource(R.string.demo_mode_exit_short), onClick = onExit)
+    }
+    Tile(Modifier.fillMaxWidth()) {
+        frame?.let {
+            Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.FillWidth,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(Tokens.Radius.inner)))
+        }
+        Text(stringResource(R.string.demo_mode_frame_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+    }
+}
+
+/** Çeviri sürerken (tuval Telefon-Calisiyor): süre, paket, canlı satır ve önceki satırlar, sayılar. */
+@Composable
+private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, onStop: () -> Unit, onPhoneView: () -> Unit) {
+    val context = LocalContext.current
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            now = System.currentTimeMillis()
+        }
+    }
+    ScreenScaffold(top = topBar, bottom = {
+        // İki ikincil düğme yan yana (Geçmiş ekranındaki gibi); "Ekranı çevir" yalnız görüntü gelirken.
+        Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
+            SecondaryButton(stringResource(R.string.main_phone_view), Modifier.weight(1f), onClick = onPhoneView)
+            if (status.streaming) ScreenTranslateButton(status, Modifier.weight(1f))
+        }
+        DestructiveButton(stringResource(if (status.demo) R.string.demo_mode_exit else R.string.stop), onClick = onStop)
+    }) {
+        if (status.demo) DemoHeader(onStop)
+        Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap), verticalAlignment = Alignment.CenterVertically) {
+            val elapsed = ((now - status.startedAt).coerceAtLeast(0) / 1000)
+            // Bir saati geçince "1:12:10" (DateUtils: s:dd:ss), öncesinde "12:10"; rakamlar tablo rakamı, süre akarken kaymaz.
+            StatusLabel(stringResource(R.string.running_pill, DateUtils.formatElapsedTime(elapsed)), live = true,
+                style = Tokens.Type.captionNumeric)
+            Spacer(Modifier.weight(1f))
+            status.packInUse?.let { Pill(stringResource(R.string.running_pack, it), pro = true) }
+        }
+        // Görüntü gelirken durum metni ("Altyazılar okunuyor") üstteki "Çeviri sürüyor" satırını tekrarlar; yalnız
+        // bağlanırken ve bağlantı sorunlarında gösterilir.
+        if (!status.streaming && status.phase.isNotEmpty()) Text(status.phase, style = Tokens.Type.caption, color = Tokens.Color.secondary)
+        AnimatedNote(status.error)
+        val current = status.recent.firstOrNull()
+        // İlk altyazı gelene kadar: kolu açınca PS5'te ana hesap seçilmeli (GitHub #231).
+        if (current == null && !Services.settings.xbox && !status.demo) NoteTile(stringResource(R.string.psn_main_account), Tokens.Color.secondary)
+        if (!status.demo) GameSection(status)
+        Tile(Modifier.fillMaxWidth()) {
+            TileLabel(stringResource(R.string.running_now))
+            // Son çeviri altyazı sarısında (içerik), altında özgün metin.
+            Text(current?.translation ?: stringResource(R.string.running_waiting), style = Tokens.Type.subtitleCurrent,
+                color = if (current != null) Tokens.Color.accentText else Tokens.Color.secondary)
+            current?.let {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
+                    Text(it.source, style = Tokens.Type.caption, color = Tokens.Color.secondary, modifier = Modifier.weight(1f))
+                    if (it.origin == "paket") Text(stringResource(R.string.running_ready_translation), style = Tokens.Type.caption, color = Tokens.Color.pro)
+                }
+                // Ölçüm satırı (iPhone ile aynı): "OCR 42 ms · Çeviri 310 ms · Gecikme 520 ms".
+                metricsText(context, it)?.let { line -> Text(line, style = Tokens.Type.caption, color = Tokens.Color.secondary) }
+            }
+        }
+        val previous = status.recent.drop(1).take(4)
+        if (previous.isNotEmpty()) RowList(previous.map { pair ->
+            {
+                // Satır iki ya da daha çok satıra uzayınca kaynak etiketi ilk satırın hizasında kalır.
+                Row(Modifier.padding(vertical = Tokens.Space.inline), verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Tokens.Space.hair)) {
+                        Text(pair.translation, style = Tokens.Type.line, color = Tokens.Color.secondary)
+                        Text(pair.source, style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                    }
+                    if (pair.origin == "paket") Text(stringResource(R.string.running_ready), style = Tokens.Type.caption, color = Tokens.Color.pro)
+                    else Text(status.engineLabel, style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                }
+            }
+        })
+        TwoColumns(
+            { Tile(it) {
+                TileLabel(stringResource(R.string.running_from_pack))
+                Text("${status.packLines} / ${status.shownLines}", style = Tokens.Type.titleNumeric, color = Tokens.Color.text)
+            } },
+            { Tile(it) {
+                TileLabel(stringResource(R.string.main_tvs_label))
+                Text(if (Services.settings.target == SubtitleTarget.TV) status.connectedTvs.toString() else stringResource(R.string.main_target_phone),
+                    style = Tokens.Type.titleNumeric, color = Tokens.Color.text)
+            } },
+        )
+    }
+}
+
+/**
+ * Karartma %70, vurgulanan öğe çevresinde amber çerçeveli delik (köşesi öğenin köşesi + 6 boşluk, iç içe köşeler
+ * paralel kalsın); kart surface2. Karartma alttaki ekrana dokunuş geçirmez; Geri tuşu turu "Geç" gibi kapatır.
+ */
+@Composable
+private fun TourOverlay(step: TourStep, target: Rect?, onSkip: () -> Unit, onNext: () -> Unit) {
+    BackHandler(onBack = onSkip)
+    BoxWithConstraints(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
+        Canvas(Modifier.fillMaxSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
+            drawRect(Color.Black.copy(alpha = 0.7f))
+            target?.let { rect ->
+                val pad = TOUR_PAD.toPx()
+                val topLeft = Offset(rect.left - pad, rect.top - pad)
+                val size = Size(rect.width + 2 * pad, rect.height + 2 * pad)
+                val corner = CornerRadius((step.radius + TOUR_PAD).toPx())
+                drawRoundRect(Color.Transparent, topLeft, size, corner, blendMode = BlendMode.Clear)
+                drawRoundRect(Tokens.Color.accent, topLeft, size, corner, style = Stroke(2.dp.toPx()))
+            }
+        }
+        // Öğe ekranın alt yarısındaysa kart üstte durur (piksel eşiği değil, ekran yüksekliğine göre).
+        val above = target != null && target.center.y > constraints.maxHeight / 2f
+        Column(Modifier.align(if (above) Alignment.TopCenter else Alignment.BottomCenter).safeDrawingPadding().padding(Tokens.Space.screen)
+            .background(Tokens.Color.surface2, RoundedCornerShape(Tokens.Radius.tile)).padding(Tokens.Space.tile),
+            verticalArrangement = Arrangement.spacedBy(Tokens.Space.inline)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${step.ordinal + 1} / ${TourStep.entries.size}", style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                Spacer(Modifier.weight(1f))
+                GhostButton(stringResource(R.string.skip), onClick = onSkip)
+            }
+            Text(stringResource(step.title), style = Tokens.Type.headline, color = Tokens.Color.text)
+            Text(stringResource(step.body), style = Tokens.Type.body, color = Tokens.Color.secondary)
+            PrimaryButton(stringResource(if (step == TourStep.PROFILE) R.string.tour_done else R.string.next), onClick = onNext)
+        }
+    }
+}
+
+/** Oyun paketleri (ücretsiz): anahtarla toptan, karoya dokunarak paket başına açılıp kapatılır. */
+@Composable
+fun PacksScreen(onBack: () -> Unit, packInUse: String?) {
+    val context = LocalContext.current
+    val settings = Services.settings
+    val version by Services.packsVersion.collectAsState()
+    var catalog by remember { mutableStateOf<List<Services.CatalogEntry>?>(null) }
+    var disabled by remember { mutableStateOf(settings.disabledPacks) }
+    var packsOn by remember { mutableStateOf(settings.packsEnabled) }
+    LaunchedEffect(version) { catalog = withContext(Dispatchers.IO) { Services.catalog(context) } }
+    val unlocked = packsOn
+    val list = catalog.orEmpty()
+    ScreenScaffold(top = {
+        TopBar(stringResource(R.string.packs_title), onBack = onBack) {
+            Pill(if (list.isEmpty()) stringResource(R.string.packs_free) else stringResource(R.string.packs_free_count, list.size))
+        }
+    }, bottom = {
+        SecondaryButton(stringResource(R.string.packs_refresh)) { Services.refreshPacks(force = true) }
+    }) {
+        Text(stringResource(R.string.packs_auto), style = Tokens.Type.body, color = Tokens.Color.secondary)
+        RowList(listOf({
+            RowItem(stringResource(R.string.settings_packs), stringResource(R.string.packs_switch_note)) {
+                androidx.compose.material3.Switch(packsOn, { packsOn = it; settings.packsEnabled = it })
+            }
+        }))
+        if (catalog == null) Text(stringResource(R.string.packs_loading), style = Tokens.Type.body, color = Tokens.Color.secondary)
+        else if (list.isEmpty()) NoteTile(stringResource(R.string.packs_none_yet), Tokens.Color.secondary)
+        list.chunked(2).forEach { row ->
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
+                row.forEach { entry ->
+                    val (code, short) = packShort(entry.id, entry.title)
+                    val on = entry.id !in disabled
+                    val playing = packInUse != null && packInUse == entry.title
+                    PackTile(code, short, linesText(context, entry.entries), Modifier.weight(1f).fillMaxHeight(),
+                        style = if (playing) TileStyle.ACTIVE else TileStyle.NORMAL, dim = !unlocked || !on,
+                        corner = { if (playing) StatusLabel(stringResource(R.string.packs_now)) else if (unlocked && !on) Pill(stringResource(R.string.packs_off)) },
+                        // Karo paketin anahtarıdır: ekran okuyucu "açık/kapalı" diye okur.
+                        toggled = on,
+                        onClick = {
+                            disabled = if (on) disabled + entry.id else disabled - entry.id
+                            settings.disabledPacks = disabled
+                        })
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+        ImportedPacksSection()
+        Tile(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
+                TileIcon(Icons.Filled.Refresh)
+                Column(verticalArrangement = Arrangement.spacedBy(Tokens.Space.hair)) {
+                    Text(stringResource(R.string.packs_next), style = Tokens.Type.headline, color = Tokens.Color.text)
+                    Text(stringResource(R.string.packs_next_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                }
+            }
+        }
+    }
+}
+
+/** Tur deliğinin öğeden taşma payı. */
+private val TOUR_PAD = 6.dp
+
+fun open(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (error: Exception) {
+    }
+}
+
+/** "Ekranı çevir": oyun ekranının tamamını çevirir; çeviri sürerken ya da sonuçlar ekrandayken dokununca kaldırır (iPhone ile aynı). */
+@Composable
+fun ScreenTranslateButton(status: LiveStatus, modifier: Modifier = Modifier) {
+    val label = when (status.screenState) {
+        LiveStatus.ScreenState.IDLE -> R.string.screen_translate
+        LiveStatus.ScreenState.WORKING -> R.string.screen_working
+        LiveStatus.ScreenState.SHOWN -> R.string.screen_remove
+    }
+    SecondaryButton(stringResource(label), modifier) { com.couchsubs.mobile.service.TranslationService.translateScreen() }
+}

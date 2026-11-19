@@ -1,0 +1,766 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Mobil tasarım sistemi: TASARIM-MOBIL.md'deki tokenlar ve bileşenler (Android ile ortak belge; onaylı tuval
+// "CouchSubs Mobil ve Windows Tasarımı", AI Design Check ile sadeleştirildi). Köşe ve yazı ölçeği design/tokens.json ile
+// aynıdır (16/12/8/6, 13/15/17/22/28). Düz yüzey: parıltı, degrade, hale yok. Ekranlar sabit değer kullanmaz.
+
+import SwiftUI
+import UIKit
+
+enum Mobile {
+    enum Space {
+        static let screen: CGFloat = 20
+        static let gap: CGFloat = 12
+        static let tile: CGFloat = 16
+        static let inline: CGFloat = 8
+        static let hair: CGFloat = 4
+    }
+
+    enum Radius {
+        static let tile: CGFloat = 16
+        static let control: CGFloat = 12
+        static let inner: CGFloat = 8
+        static let tag: CGFloat = 6
+        static let pill: CGFloat = 999
+    }
+
+    enum Control {
+        static let button: CGFloat = 52
+        static let buttonSmall: CGFloat = 44
+        static let icon: CGFloat = 44
+        static let field: CGFloat = 52
+        static let row: CGFloat = 52
+        static let tag: CGFloat = 24
+    }
+
+    /// Basamaklar: deep → bg → surface → surface2 → raised; katmanlar %8 ince çizgiyle ayrılır.
+    /// Ortak tasarım değerleriyle (design/tokens.json, koyu görünüm) aynı olan renkler oradan gelir; uygulama hep koyudur.
+    /// Yalnız telefona özgü olanlar (deep, %8 çizgi, üçüncül yazı) burada tanımlıdır.
+    enum Palette {
+        static let deep = Color(hex: 0x0E0F11)
+        static let bg = Color.csBackground
+        static let surface = Color.csSurface
+        static let surface2 = Color.csSurface2
+        /// İnce çizgi (%8): karo ve alan çerçevesi, ayraç.
+        static let border = Color(.sRGB, red: 0xF3 / 255, green: 0xEE / 255, blue: 0xE4 / 255, opacity: 0.08)
+        /// `raised`: seçili segment, kapalı anahtar, boş adım, sayfa noktası.
+        static let borderStrong = Color.csBorder
+        static let text = Color.csText
+        static let secondary = Color.csSecondary
+        static let tertiary = Color(hex: 0x94908A)
+        static let accent = Color.csAccent
+        static let accentHi = Color.csAccentHi
+        static let onAccent = Color.csOnAccent
+        static let pro = Color.csPro
+        static let proSoft = Color.csProSoft
+        static let success = Color.csSuccess
+        static let warning = Color.csWarning
+        static let danger = Color.csDanger
+        static let dangerSoft = Color.csDangerSoft
+    }
+
+    /// Yalnız bu beş arayüz boyu (altyazı içeriği hariç). Varsayılan yazı boyunda 28/22/17/15/13; sistemin metin
+    /// stilleriyle kurulduğu için Dinamik Yazı'yla büyür (ekranın kökünde `accessibility2` ile sınırlı).
+    enum TypeScale {
+        static let display = Font.system(.title, weight: .semibold)
+        static let title = Font.system(.title2, weight: .semibold).monospacedDigit()
+        static let headline = Font.system(.headline, weight: .semibold)
+        static let body = Font.system(.subheadline, weight: .regular)
+        static let caption = Font.system(.footnote, weight: .medium)
+        /// Altyazı içeriği: dikeyde canlı satır 28, yatay altyazı ekranında 36; kullanıcı %80–%160 ölçekler.
+        static func subtitle(landscape: Bool, scale: Double) -> Font {
+            .system(size: (landscape ? 36 : 28) * min(1.6, max(0.8, scale)), weight: .semibold)
+        }
+    }
+}
+
+extension Color {
+    init(hex: UInt32) {
+        self.init(.sRGB, red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+    }
+}
+
+// MARK: - Düğmeler (§5)
+
+struct MobileButtonStyle: ButtonStyle {
+    enum Kind { case primary, secondary, ghost, destructive }
+    var kind: Kind = .primary
+    /// Bir satırdaki küçük düğmeler (çeviri sürerken ikincil eylemler): simge üstte, `caption` yazı altta, yatay boşluk 8.
+    var compact = false
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        return configuration.label
+            .font(compact ? Mobile.TypeScale.caption.weight(.semibold) : Mobile.TypeScale.headline)
+            .labelStyle(MobileButtonLabelStyle(stacked: compact))
+            // Düğme yazısı iki satıra bölünmez: sığmazsa %75'e kadar küçülür (erişilebilirlik yazı boylarında satır
+            // sınırı kalkar). Küçük düğmenin iki satırlık yazısı etiket stilinde.
+            .lineLimit(compact ? nil : typeSize.isAccessibilitySize ? 3 : 1)
+            .minimumScaleFactor(compact ? 1 : 0.75)
+            .foregroundStyle(foreground)
+            .frame(maxWidth: kind == .ghost ? nil : .infinity, minHeight: kind == .ghost ? Mobile.Control.buttonSmall : Mobile.Control.button)
+            .padding(.horizontal, compact ? Mobile.Space.inline : kind == .ghost ? Mobile.Space.gap : Mobile.Space.screen)
+            .background { background(pressed: pressed) }
+            .overlay {
+                if kind == .secondary {
+                    RoundedRectangle(cornerRadius: Mobile.Radius.control).strokeBorder(Mobile.Palette.border)
+                }
+            }
+            .scaleEffect(pressed ? 0.97 : 1)
+            // Devre dışı birincil düğme soldurulmaz: yüzey-2 zemin ve ikincil yazı (TASARIM.md › Düğme).
+            .opacity(isEnabled || kind == .primary ? 1 : 0.4)
+            .contentShape(RoundedRectangle(cornerRadius: Mobile.Radius.control))
+            .animation(.easeOut(duration: 0.12), value: pressed)
+    }
+
+    private var foreground: Color {
+        switch kind {
+        case .primary: isEnabled ? Mobile.Palette.onAccent : Mobile.Palette.secondary
+        case .secondary: Mobile.Palette.text
+        case .ghost: Mobile.Palette.accent
+        case .destructive: Mobile.Palette.danger
+        }
+    }
+
+    /// Düz dolgu, gölge yok; basılı birincil düğme biraz açık sarı, devre dışı birincil yüzey-2.
+    @ViewBuilder private func background(pressed: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Mobile.Radius.control)
+        switch kind {
+        case .primary: shape.fill(!isEnabled ? Mobile.Palette.surface2 : pressed ? Mobile.Palette.accentHi : Mobile.Palette.accent)
+        case .secondary: shape.fill(Mobile.Palette.surface2)
+        case .ghost: Color.clear
+        case .destructive: shape.fill(Mobile.Palette.dangerSoft)
+        }
+    }
+}
+
+/// Düğme yazısı ve simgesi: yan yana ya da (küçük düğmede) simge üstte, en çok iki satır ortalı yazı altta.
+private struct MobileButtonLabelStyle: LabelStyle {
+    let stacked: Bool
+
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if stacked {
+            VStack(spacing: Mobile.Space.hair) {
+                configuration.icon
+                configuration.title
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.vertical, Mobile.Space.inline)
+        } else {
+            Label { configuration.title } icon: { configuration.icon }
+                .labelStyle(.titleAndIcon)
+        }
+    }
+}
+
+extension ButtonStyle where Self == MobileButtonStyle {
+    static var mobilePrimary: MobileButtonStyle { MobileButtonStyle(kind: .primary) }
+    static var mobileSecondary: MobileButtonStyle { MobileButtonStyle(kind: .secondary) }
+    static var mobileGhost: MobileButtonStyle { MobileButtonStyle(kind: .ghost) }
+    static var mobileDestructive: MobileButtonStyle { MobileButtonStyle(kind: .destructive) }
+}
+
+/// 44×44 simge düğmesi (ayarlar, kapat, geri).
+struct IconButton: View {
+    let symbol: String
+    let label: LocalizedStringKey
+    var tint: Color = Mobile.Palette.text
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: Mobile.Control.icon, height: Mobile.Control.icon)
+                .background(Mobile.Palette.surface2, in: RoundedRectangle(cornerRadius: Mobile.Radius.control))
+                .overlay(RoundedRectangle(cornerRadius: Mobile.Radius.control).strokeBorder(Mobile.Palette.border))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
+    }
+}
+
+/// Profil (Cihazlarım) düğmesi: simge düğmesiyle aynı görünüm; baş harf varsa simgenin yerine.
+struct AvatarButton: View {
+    let initials: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if initials.isEmpty {
+                    Image(systemName: "person").font(.system(size: 17, weight: .semibold))
+                } else {
+                    Text(verbatim: initials).font(Mobile.TypeScale.caption.weight(.semibold))
+                }
+            }
+            .foregroundStyle(Mobile.Palette.text)
+            .frame(width: Mobile.Control.icon, height: Mobile.Control.icon)
+            .background(Mobile.Palette.surface2, in: RoundedRectangle(cornerRadius: Mobile.Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: Mobile.Radius.control).strokeBorder(Mobile.Palette.border))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Profile"))
+    }
+}
+
+// MARK: - Karolar (§6, §7)
+
+/// Karonun vurgusu: seçili (1 pt amber çerçeve). Parıltı, degrade ve renkli çerçeve yok.
+enum TileEmphasis { case none, selected }
+
+/// Karo: düz yüzey, %8 ince çerçeve, köşe 16.
+struct Tile<Content: View>: View {
+    var emphasis: TileEmphasis = .none
+    var spacing: CGFloat = Mobile.Space.inline
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Mobile.Radius.tile, style: .continuous)
+        VStack(alignment: .leading, spacing: spacing) { content }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Mobile.Space.tile)
+            .background(Mobile.Palette.surface, in: shape)
+            .overlay(shape.strokeBorder(emphasis == .selected ? Mobile.Palette.accent : Mobile.Palette.border))
+    }
+}
+
+/// Değer karosu: üstte etiket satırı (simge + etiket [+ durum noktası] [+ `›`]), altında `title` değer. Kare zorlanmaz.
+/// Dokununca bir ayar açan karoda `chevron` sağ üstte `›` gösterir. Uzun değer küçültülmez, iki satıra iner.
+struct StatTile: View {
+    let symbol: String
+    var tint: MobileTileIcon.Tint = .neutral
+    let label: LocalizedStringKey
+    let value: String
+    var live = false
+    var chevron = false
+
+    var body: some View {
+        Tile {
+            HStack(spacing: Mobile.Space.inline) {
+                MobileTileIcon(symbol: symbol, tint: tint)
+                Text(label).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                Spacer(minLength: 0)
+                if live { MobileLiveDot(pulses: false) }
+                if chevron { RowChevron() }
+            }
+            Text(verbatim: value).font(Mobile.TypeScale.title).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Gidilecek bir ekranı olan satırın ve karonun `›` işareti.
+struct RowChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(Mobile.TypeScale.caption.weight(.semibold))
+            .foregroundStyle(Mobile.Palette.tertiary)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Bilgi karosunun satırı (TASARIM.md › InfoCard): solda ad (`body`, ikincil), sağda değer (`body` yarı kalın) ve `›`;
+/// simge yok. En az 52 yükseklik (dokunma hedefi). Satırlar `Tile(spacing: 0)` içinde `RowDivider` ile ayrılır.
+struct MobileInfoRow: View {
+    let title: LocalizedStringKey
+    let value: String
+
+    var body: some View {
+        HStack(spacing: Mobile.Space.inline) {
+            Text(title).font(Mobile.TypeScale.body).foregroundStyle(Mobile.Palette.secondary)
+            Spacer(minLength: Mobile.Space.gap)
+            Text(verbatim: value)
+                .font(Mobile.TypeScale.body.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(Mobile.Palette.text)
+                .lineLimit(1)
+            RowChevron()
+        }
+        .frame(minHeight: Mobile.Control.row)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Bilgi karosu: üstte simge + `headline` başlık, altında `caption` açıklama (simge kutusu yok).
+struct InfoTile: View {
+    let symbol: String
+    let title: LocalizedStringKey
+    let caption: LocalizedStringKey
+    var emphasis: TileEmphasis = .none
+
+    var body: some View {
+        Tile(emphasis: emphasis) {
+            HStack(spacing: Mobile.Space.inline) {
+                MobileTileIcon(symbol: symbol)
+                Text(title).font(Mobile.TypeScale.headline).fixedSize(horizontal: false, vertical: true)
+            }
+            Text(caption).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// Karodaki simge: kutusuz, 18 pt, ikincil renkte; paket simgesi mor, hata kırmızı.
+struct MobileTileIcon: View {
+    enum Tint { case neutral, ok, accent, pro, danger }
+    let symbol: String
+    var tint: Tint = .neutral
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(color)
+            .frame(width: 18, height: 18)
+            .accessibilityHidden(true)
+    }
+
+    private var color: Color {
+        switch tint {
+        case .neutral, .ok, .accent: Mobile.Palette.secondary
+        case .pro: Mobile.Palette.pro
+        case .danger: Mobile.Palette.danger
+        }
+    }
+}
+
+/// Oyun kısaltması rozeti ("GTA").
+struct GameMonogram: View {
+    let code: String
+    var size: CGFloat = 44
+
+    var body: some View {
+        Text(verbatim: code)
+            .font(Mobile.TypeScale.caption.weight(.semibold))
+            .foregroundStyle(Mobile.Palette.text)
+            .frame(width: size, height: size)
+            .background(Mobile.Palette.surface2, in: RoundedRectangle(cornerRadius: Mobile.Radius.inner))
+    }
+}
+
+/// Etiket ya da durum. Etiket: 24 yükseklik, köşe 6, nötr zemin (paket için mor yazı ve `proSoft`).
+/// Durum (`dot`): 8 pt nokta ve kelime, zeminsiz; `live` ise nokta atar (yalnız canlı çeviride).
+struct MobilePill: View {
+    enum Kind { case neutral, ok, accent, pro }
+    let text: String
+    var kind: Kind = .neutral
+    var dot = false
+    var live = false
+    var compact = false
+
+    var body: some View {
+        if dot || live {
+            HStack(spacing: Mobile.Space.inline) {
+                MobileLiveDot(pulses: live)
+                Text(verbatim: text).font(Mobile.TypeScale.caption).monospacedDigit().lineLimit(1)
+            }
+            .foregroundStyle(Mobile.Palette.text)
+        } else {
+            Text(verbatim: text)
+                .font(Mobile.TypeScale.caption)
+                .monospacedDigit()
+                .lineLimit(1)
+                .foregroundStyle(kind == .pro ? Mobile.Palette.pro : Mobile.Palette.secondary)
+                .padding(.horizontal, Mobile.Space.inline)
+                .frame(height: Mobile.Control.tag)
+                .background(kind == .pro ? Mobile.Palette.proSoft : Mobile.Palette.surface2,
+                            in: RoundedRectangle(cornerRadius: Mobile.Radius.tag))
+        }
+    }
+}
+
+/// Durum noktası: 8 pt yeşil. `pulses` ise 2 sn'de bir genişleyip sönen halka (azaltılmış harekette sabit).
+struct MobileLiveDot: View {
+    var color: Color = Mobile.Palette.success
+    var pulses = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 8, height: 8)
+            .overlay {
+                if pulses && !reduceMotion {
+                    Circle()
+                        .stroke(color, lineWidth: 2)
+                        .frame(width: 16, height: 16)
+                        .scaleEffect(pulse ? 1.2 : 0.5)
+                        .opacity(pulse ? 0 : 0.7)
+                }
+            }
+            .onAppear {
+                guard pulses, !reduceMotion else { return }
+                // ai-design-check-ignore-next-line pulse-for-live-only -- yalnız canlı çeviride atar; azaltılmış harekette durur
+                withAnimation(.easeOut(duration: 2).repeatForever(autoreverses: false)) { pulse = true }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+/// Sayfa göstergesi (karşılama, tur).
+struct PageDots: View {
+    let count: Int
+    let current: Int
+
+    var body: some View {
+        HStack(spacing: Mobile.Space.inline) {
+            ForEach(0..<count, id: \.self) { index in
+                Capsule()
+                    .fill(index == current ? Mobile.Palette.text : Mobile.Palette.borderStrong)
+                    .frame(width: index == current ? 24 : 8, height: 8)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: current)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Segmentli seçim (çeviri motoru): seçili öğe `raised` zemin ve yarı kalın; çerçeve ve parıltı yok.
+struct SegmentedTabs<Value: Hashable>: View {
+    let options: [(key: Value, value: LocalizedStringKey)]
+    @Binding var selection: Value
+
+    init(options: KeyValuePairs<Value, LocalizedStringKey>, selection: Binding<Value>) {
+        self.options = options.map { ($0.key, $0.value) }
+        _selection = selection
+    }
+
+    /// Seçenekleri çalışırken gelen listeden (ör. ai-models.json'daki modeller) kurar.
+    init(options: [(key: Value, value: LocalizedStringKey)], selection: Binding<Value>) {
+        self.options = options
+        _selection = selection
+    }
+
+    var body: some View {
+        HStack(spacing: Mobile.Space.hair) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                let selected = option.key == selection
+                Button { selection = option.key } label: {
+                    Text(option.value)
+                        .font(Mobile.TypeScale.body.weight(selected ? .semibold : .medium))
+                        .foregroundStyle(selected ? Mobile.Palette.text : Mobile.Palette.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity, minHeight: Mobile.Control.buttonSmall)
+                        .background {
+                            if selected {
+                                RoundedRectangle(cornerRadius: Mobile.Radius.inner).fill(Mobile.Palette.borderStrong)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .selectionFeedback(trigger: selected)
+            }
+        }
+        .padding(Mobile.Space.hair)
+        .background(Mobile.Palette.surface2, in: RoundedRectangle(cornerRadius: Mobile.Radius.control))
+    }
+}
+
+/// 52'lik giriş alanı.
+struct MobileFieldStyle: TextFieldStyle {
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration
+            .font(Mobile.TypeScale.headline.weight(.regular))
+            .foregroundStyle(Mobile.Palette.text)
+            .padding(.horizontal, Mobile.Space.tile)
+            .frame(minHeight: Mobile.Control.field)
+            .background(Mobile.Palette.surface2, in: RoundedRectangle(cornerRadius: Mobile.Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: Mobile.Radius.control).strokeBorder(Mobile.Palette.border))
+    }
+}
+
+/// Geniş karonun içindeki 52'lik liste satırı.
+struct ListRow<Trailing: View>: View {
+    let symbol: String
+    var tint: MobileTileIcon.Tint = .neutral
+    let title: LocalizedStringKey
+    var detail: String?
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: Mobile.Space.gap) {
+            MobileTileIcon(symbol: symbol, tint: tint)
+            Text(title).font(Mobile.TypeScale.headline).foregroundStyle(Mobile.Palette.text)
+            Spacer(minLength: Mobile.Space.inline)
+            if let detail { Text(verbatim: detail).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary) }
+            trailing
+        }
+        .frame(minHeight: Mobile.Control.row)
+        .contentShape(Rectangle())
+    }
+}
+
+extension ListRow where Trailing == AnyView {
+    /// Gidilecek bir ekranı olan satır (sağda ok).
+    init(symbol: String, tint: MobileTileIcon.Tint = .neutral, title: LocalizedStringKey, detail: String? = nil) {
+        self.init(symbol: symbol, tint: tint, title: title, detail: detail) {
+            AnyView(RowChevron())
+        }
+    }
+}
+
+/// Satırlar arası 1 px ayraç.
+struct RowDivider: View {
+    var body: some View { Rectangle().fill(Mobile.Palette.border).frame(height: 1) }
+}
+
+// MARK: - Ekran iskeleti
+
+/// Ekran zemini: düz `bg` (hale ve ışık yok).
+struct MobileBackground: View {
+    var body: some View {
+        Mobile.Palette.bg.ignoresSafeArea()
+    }
+}
+
+/// Ekran yapısı: güvenli alan + 8 → üst satır → 12 → içerik (12 aralıkla, kayar) → alt düğme bölgesi → 20.
+/// İçerik ekranın en üstüne ve en altına kadar kayar; üst satır ve alt düğmeler içeriğin üstünde yüzer (düz zemin şeridi
+/// yok). Kenarlarda iOS 26'nın yumuşak kaydırma kenarı (scroll edge effect), daha eskide bulanık malzeme + degrade.
+/// Son öğe düğmelerin altında kalmaz: çubukların yüksekliği kaydırmanın iç boşluğuna eklenir.
+struct MobileScreen<Header: View, Content: View, Bottom: View>: View {
+    @ViewBuilder var header: Header
+    @ViewBuilder var content: Content
+    @ViewBuilder var bottom: Bottom
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Mobile.Space.gap) { content }
+                .padding(.horizontal, Mobile.Space.screen)
+                .padding(.top, Mobile.Space.gap)
+                .padding(.bottom, Mobile.Space.screen)
+        }
+        .scrollIndicators(.hidden)
+        .softScrollEdges()
+        .edgeBar(.top) {
+            header
+                .padding(.horizontal, Mobile.Space.screen)
+                .padding(.top, Mobile.Space.inline)
+        }
+        .edgeBar(.bottom) {
+            VStack(spacing: Mobile.Space.gap) { bottom }
+                .padding(.horizontal, Mobile.Space.screen)
+                .padding(.bottom, Mobile.Space.screen)
+        }
+        .foregroundStyle(Mobile.Palette.text)
+        .background(MobileBackground())
+        .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+extension View {
+    /// Kaydırmanın üstünde yüzen kenar çubuğu. iOS 26+: `safeAreaBar` (kaydırma kenarı efektini sistem çizer);
+    /// öncesi: `safeAreaInset` ve çubuğun arkasında içe doğru sönen bulanık malzeme (`EdgeFade`).
+    @ViewBuilder func edgeBar<Bar: View>(_ edge: VerticalEdge, @ViewBuilder bar: () -> Bar) -> some View {
+        if #available(iOS 26, *) {
+            safeAreaBar(edge: edge, spacing: 0, content: bar)
+        } else {
+            safeAreaInset(edge: edge, spacing: 0) { bar().background { EdgeFade(edge: edge) } }
+        }
+    }
+
+    /// iOS 26+: kenarda içerik sert kesilmez, yumuşakça bulanıp söner.
+    @ViewBuilder func softScrollEdges() -> some View {
+        if #available(iOS 26, *) {
+            scrollEdgeEffectStyle(.soft, for: .all)
+        } else {
+            self
+        }
+    }
+}
+
+/// iOS 26 öncesi kaydırma kenarı: ekranın kenarında (güvenli alan dahil) bulanık malzeme ve zemin rengi, çubuğun içerik
+/// tarafına doğru saydamlaşır; düz şerit ve sert çizgi oluşmaz.
+private struct EdgeFade: View {
+    let edge: VerticalEdge
+
+    var body: some View {
+        let outer: UnitPoint = edge == .top ? .top : .bottom
+        let inner: UnitPoint = edge == .top ? .bottom : .top
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            Mobile.Palette.bg.opacity(0.55)
+        }
+        .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.5),
+                                     .init(color: .clear, location: 1)], startPoint: outer, endPoint: inner))
+        .ignoresSafeArea(edges: edge == .top ? .top : .bottom)
+        .allowsHitTesting(false)
+    }
+}
+
+/// Başlık bloğu: ekran başına bir `display` başlık + açıklama.
+struct ScreenTitle: View {
+    var caption: LocalizedStringKey?
+    let title: LocalizedStringKey
+    var message: LocalizedStringKey?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Mobile.Space.hair) {
+            if let caption { Text(caption).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary) }
+            Text(title).font(Mobile.TypeScale.display).fixedSize(horizontal: false, vertical: true)
+            if let message {
+                Text(message).font(Mobile.TypeScale.body).foregroundStyle(Mobile.Palette.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Alt sayfaların üst satırı: geri düğmesi ve `title` boyunda başlık.
+struct BackHeader<Trailing: View>: View {
+    let title: LocalizedStringKey
+    @ViewBuilder var trailing: Trailing
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        HStack(spacing: Mobile.Space.gap) {
+            IconButton(symbol: "chevron.left", label: "Back") { dismiss() }
+            Text(title).font(Mobile.TypeScale.title)
+            Spacer()
+            trailing
+        }
+        .frame(height: Mobile.Control.icon)
+    }
+}
+
+extension BackHeader where Trailing == EmptyView {
+    init(title: LocalizedStringKey) { self.init(title: title) { EmptyView() } }
+}
+
+/// Hata ya da uyarı satırı.
+struct MobileNote: View {
+    let text: String
+    var tone: Color = Mobile.Palette.warning
+
+    var body: some View {
+        Label(text, systemImage: "exclamationmark.triangle.fill")
+            .font(Mobile.TypeScale.caption)
+            .foregroundStyle(tone)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+extension View {
+    /// Mobil ekran zemini.
+    func mobileScreen() -> some View { background(MobileBackground()) }
+}
+
+extension View {
+    /// Alttan açılan sayfanın zemini. `presentationBackground` iOS 16.4'te geldi; öncesinde içerik zemini kenara kadar
+    /// boyanır (görünüm aynı).
+    @ViewBuilder func sheetBackground(_ color: Color) -> some View {
+        if #available(iOS 16.4, *) {
+            presentationBackground(color)
+        } else {
+            background(color.ignoresSafeArea())
+        }
+    }
+
+    /// Küçük bilgi sayfası içeriği kadar açılır (`.medium`/`.large`'daki boş alan olmaz); üstte tutamaç görünür.
+    /// İçerik yüksekliği ölçülür, değişince (ör. bir alan gizlenince) sayfa da uyar.
+    func fittedSheet() -> some View { modifier(FittedSheet()) }
+
+    /// Seçim değişince hafif dokunsal geri bildirim. `sensoryFeedback` iOS 17'de geldi; iOS 16'da UIKit'in üreteciyle
+    /// (yalnız seçilen düğmede, bir kez).
+    @ViewBuilder func selectionFeedback(trigger selected: Bool) -> some View {
+        if #available(iOS 17, *) {
+            sensoryFeedback(.selection, trigger: selected)
+        } else {
+            onChange(of: selected) { now in
+                if now { UISelectionFeedbackGenerator().selectionChanged() }
+            }
+        }
+    }
+}
+
+private struct SheetHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// Özel yükseklik alttaki güvenli alanı içermez; ölçülen içerik yüksekliği doğrudan kullanılır.
+private struct FittedSheet: ViewModifier {
+    @State private var height: CGFloat = 320
+
+    func body(content: Content) -> some View {
+        content
+            .fixedSize(horizontal: false, vertical: true)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: SheetHeightKey.self, value: proxy.size.height)
+            })
+            .onPreferenceChange(SheetHeightKey.self) { value in
+                if value > 0 { height = value.rounded(.up) }
+            }
+            .presentationDetents([.height(height)])
+            .presentationDragIndicator(.visible)
+    }
+}
+
+// MARK: - Bento ızgara (§6)
+
+private struct BentoWideKey: LayoutValueKey {
+    static let defaultValue = false
+}
+
+extension View {
+    /// Karo iki sütunu kaplar (geniş/kahraman karo).
+    func bentoWide() -> some View { layoutValue(key: BentoWideKey.self, value: true) }
+}
+
+/// İki sütunlu bento ızgara: aralık 12; `bentoWide()` karolar tam satır. Bir satırdaki karoların yüksekliği eşittir.
+struct BentoGrid: Layout {
+    var spacing: CGFloat = Mobile.Space.gap
+
+    private func rows(_ subviews: Subviews) -> [[Int]] {
+        var rows: [[Int]] = []
+        var current: [Int] = []
+        for index in subviews.indices {
+            if subviews[index][BentoWideKey.self] {
+                if !current.isEmpty { rows.append(current); current = [] }
+                rows.append([index])
+            } else {
+                current.append(index)
+                if current.count == 2 { rows.append(current); current = [] }
+            }
+        }
+        if !current.isEmpty { rows.append(current) }
+        return rows
+    }
+
+    private func heights(_ rows: [[Int]], width: CGFloat, subviews: Subviews) -> [CGFloat] {
+        let column = (width - spacing) / 2
+        return rows.map { row in
+            let cellWidth = row.count == 1 && subviews[row[0]][BentoWideKey.self] ? width : column
+            return row.map { subviews[$0].sizeThatFits(ProposedViewSize(width: cellWidth, height: nil)).height }.max() ?? 0
+        }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 350
+        let rowHeights = heights(rows(subviews), width: width, subviews: subviews)
+        let total = rowHeights.reduce(0, +) + spacing * CGFloat(max(0, rowHeights.count - 1))
+        return CGSize(width: width, height: total)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let allRows = rows(subviews)
+        let rowHeights = heights(allRows, width: bounds.width, subviews: subviews)
+        let column = (bounds.width - spacing) / 2
+        var y = bounds.minY
+        for (row, height) in zip(allRows, rowHeights) {
+            for (position, index) in row.enumerated() {
+                let wide = subviews[index][BentoWideKey.self]
+                let width = wide ? bounds.width : column
+                let x = bounds.minX + (wide ? 0 : CGFloat(position) * (column + spacing))
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: width, height: height))
+            }
+            y += height + spacing
+        }
+    }
+}
