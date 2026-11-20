@@ -68,9 +68,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          gradle assembleDebug -Pcouchsubs.patchChiaki=true -Pcouchsubs.requireTvPackages=true --no-daemon
+          gradle assembleRelease -Pcouchsubs.patchChiaki=true -Pcouchsubs.requireTvPackages=true --no-daemon
           mkdir -p ../dist
-          cp app/build/outputs/apk/debug/*.apk ../dist/CouchSubs-android-debug.apk
+          cp app/build/outputs/apk/release/*.apk ../dist/CouchSubs-sesli.apk
       - uses: actions/upload-artifact@v4
         with:
           name: couchsubs-android-app
@@ -81,5 +81,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete sesli -y --cleanup-tag -R "$GITHUB_REPOSITORY" || true
-          gh release create sesli dist/CouchSubs-android-debug.apk -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create sesli dist/CouchSubs-sesli.apk -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "CouchSubs + Türkçe sesli okuma" --notes "Telefon uygulaması. Ayarlar > Profil > 'Türkçeyi sesli oku'."
