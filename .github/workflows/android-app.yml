@@ -63,6 +63,13 @@ jobs:
           echo "COUCHSUBS_PYTHON=$RUNNER_TEMP/venv/bin/python3" >> "$GITHUB_ENV"
       - name: NDK ve CMake
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
+      - name: Telefon içi ses motoru (pocket-tts, MIT)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p couchsubs-android/app/src/main/jniLibs/arm64-v8a
+          gh release download tts-engine -R "$GITHUB_REPOSITORY" -p libpockettts.so -p "libc++_shared.so" -D couchsubs-android/app/src/main/jniLibs/arm64-v8a
+          ls -la couchsubs-android/app/src/main/jniLibs/arm64-v8a
       - name: Derle
         working-directory: couchsubs-android
         env:

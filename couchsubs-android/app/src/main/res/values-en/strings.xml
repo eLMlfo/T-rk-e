@@ -257,6 +257,8 @@
     <string name="settings_voice_engine_phone">Phone voice (offline)</string>
     <string name="settings_voice_engine_ai">AI: fast, expressive</string>
     <string name="settings_voice_engine_ai_fast">AI: best quality (slower)</string>
+    <string name="settings_voice_engine_local">On-device AI: offline, expressive</string>
+    <string name="settings_voice_local_model">Offline voice model</string>
     <string name="settings_voice_key">Gemini key</string>
     <string name="settings_voice_key_saved">Saved</string>
     <string name="settings_voice_key_missing">Missing: needed for AI voice</string>

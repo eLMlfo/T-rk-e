@@ -133,6 +133,8 @@ android {
     testOptions { unitTests.returnDefaultValues = true }
     // BouncyCastle ve jsch jar'ları aynı OSGi dosyalarını taşır (uygulamada kullanılmaz).
     packaging { resources { excludes += ['/META-INF/{AL2.0,LGPL2.1}', 'META-INF/versions/*/OSGI-INF/MANIFEST.MF'] } }
+    // Telefon içi ses motoru (libpockettts.so) ayrı bir program olarak çalıştırılır: diske açılmış olmalı.
+    packaging { jniLibs { useLegacyPackaging = true } }
 }
 
 // Oyun paketleri ve yapay zekâ model listesi Mac ve Windows'la aynı dosyalardır.

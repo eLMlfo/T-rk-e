@@ -88,6 +88,8 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var geminiSaved by remember { mutableStateOf(!settings.apiKey(EngineChoice.GEMINI).isNullOrBlank()) }
     var keyDialog by remember { mutableStateOf(false) }
     var voiceTest by remember { mutableStateOf<String?>(null) }
+    remember { com.couchsubs.mobile.service.voice.LocalTts.init(context); 0 }
+    val localState by com.couchsubs.mobile.service.voice.LocalTts.state.collectAsState()
     val testScope = rememberCoroutineScope()
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
     var usage by remember { mutableStateOf(settings.usageData) }
@@ -128,8 +130,28 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
                 Switch(voice, { voice = it; settings.voiceSubtitles = it })
             } },
             { RowItem(stringResource(R.string.settings_voice_engine), stringResource(when (voiceEngine) {
-                    1 -> R.string.settings_voice_engine_ai; 2 -> R.string.settings_voice_engine_ai_fast; else -> R.string.settings_voice_engine_phone
-                }), onClick = { voiceEngine = (voiceEngine + 1) % 3; settings.voiceEngine = voiceEngine }) },
+                    1 -> R.string.settings_voice_engine_ai; 2 -> R.string.settings_voice_engine_ai_fast
+                    3 -> R.string.settings_voice_engine_local; else -> R.string.settings_voice_engine_phone
+                }), onClick = {
+                    // Sıra: telefon sesi → telefon içi yapay zekâ → Gemini hızlı → Gemini kaliteli.
+                    voiceEngine = when (voiceEngine) { 0 -> 3; 3 -> 1; 1 -> 2; else -> 0 }
+                    settings.voiceEngine = voiceEngine
+                }) },
+            { RowItem(stringResource(R.string.settings_voice_local_model), com.couchsubs.mobile.service.voice.LocalTts.describe(localState),
+                onClick = {
+                    val tts = com.couchsubs.mobile.service.voice.LocalTts
+                    when {
+                        localState is com.couchsubs.mobile.service.voice.LocalTts.State.Unsupported -> Unit
+                        !tts.modelReady() -> { Thread({ tts.download() }, "model download").start()
+                            if (voiceEngine != 3) { voiceEngine = 3; settings.voiceEngine = 3 } }
+                        else -> {
+                            voiceTest = "Telefon içi ses deneniyor… (ilk açılışta model belleğe yüklenir, biraz sürebilir)"
+                            testScope.launch {
+                                voiceTest = withContext(Dispatchers.IO) { localTest() }
+                            }
+                        }
+                    }
+                }) },
             { RowItem(stringResource(R.string.settings_voice_key),
                 stringResource(if (geminiSaved) R.string.settings_voice_key_saved else R.string.settings_voice_key_missing),
                 onClick = { keyDialog = true }) },
@@ -506,4 +528,37 @@ private fun ColorSwatch(option: SubtitleTextColor, selected: Boolean, onSelect: 
         Box(Modifier.size(32.dp).background(if (yellow) Tokens.Color.accent else Tokens.Color.text, CircleShape)
             .border(1.dp, Tokens.Color.borderStrong, CircleShape))
     }
+}
+
+
+/** Telefon içi sesi dener: motoru açar, bir kızgın bir de sakin cümle okutur, süreleri yazar. */
+private fun localTest(): String {
+    val tts = com.couchsubs.mobile.service.voice.LocalTts
+    val speech = com.couchsubs.mobile.service.voice.TurkishSpeech
+    val opened = System.currentTimeMillis()
+    if (!tts.start()) return "❌ " + tts.describe(tts.state.value)
+    val openMs = System.currentTimeMillis() - opened
+    val lines = listOf(
+        Triple("male_2", "Get in the car, now! The cops are coming!", "Arabaya bin, hemen! Polisler geliyor!"),
+        Triple("female_2", "It's okay, take a breath.", "Tamam, sakin ol. Bir nefes al."),
+    )
+    val report = StringBuilder("Motor açılışı: $openMs ms\n")
+    for ((voice, english, turkish) in lines) {
+        val out = java.io.ByteArrayOutputStream()
+        val start = System.currentTimeMillis()
+        var first = 0L
+        try {
+            tts.stream(speech.prepare(turkish, speech.guess(english)), voice, { false }) {
+                if (first == 0L) first = System.currentTimeMillis() - start
+                out.write(it)
+            }
+        } catch (error: Throwable) {
+            report.append("❌ $voice: ${error.message}\n"); continue
+        }
+        val total = System.currentTimeMillis() - start
+        val audioMs = out.size() / 2 * 1000L / com.couchsubs.mobile.service.voice.GeminiSpeech.SAMPLE_RATE
+        com.couchsubs.mobile.service.voice.PcmPlayer.play(out.toByteArray())
+        report.append("✅ $voice: ilk ses $first ms, ${audioMs} ms ses $total ms'de üretildi (hız ${"%.1f".format(audioMs.toDouble() / maxOf(1, total))}x)\n")
+    }
+    return report.toString()
 }

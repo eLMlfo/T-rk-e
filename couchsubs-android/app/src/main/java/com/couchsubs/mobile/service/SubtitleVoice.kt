@@ -17,6 +17,9 @@ import android.util.Log
 import android.widget.Toast
 import com.couchsubs.mobile.service.voice.CharacterCast
 import com.couchsubs.mobile.service.voice.GeminiSpeech
+import com.couchsubs.mobile.service.voice.LocalCast
+import com.couchsubs.mobile.service.voice.LocalTts
+import com.couchsubs.mobile.service.voice.TurkishSpeech
 import java.io.ByteArrayOutputStream
 import java.util.ArrayDeque
 import java.util.Locale
@@ -43,13 +46,14 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
         /** 0 normal, 1 hızlı, 2 çok hızlı (taban hız; birikince ayrıca hızlanır). */
         val speed: Int
         val characterVoices: Boolean
-        /** 0 telefon, 1 yapay zekâ (hızlı model, varsayılan), 2 yapay zekâ (en kaliteli, daha yavaş). */
+        /** 0 telefon, 1 Gemini hızlı, 2 Gemini en kaliteli, 3 telefon içi yapay zekâ (internetsiz, Pocket TTS Turkish). */
         val engine: Int
         val geminiKey: String?
     }
 
     private class Line(
         val speaker: String?, val text: String, val source: String, val game: String?, val context: List<String>,
+        val newTurn: Boolean = false,
     ) {
         val at: Long = SystemClock.elapsedRealtime()
         /** Yapay zekâ sesinin PCM'i üretildikçe buraya yazılır. */
@@ -72,6 +76,9 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
     @Volatile private var gapMs = 3_500.0
     private fun averageGap() = gapMs
     private val synth = Executors.newFixedThreadPool(3)
+    /** Telefon içi motor: işlemciyi paylaşmasın diye cümleler tek tek (sıradaki, çalan sırasında hazırlanır). */
+    private val localSynth = Executors.newSingleThreadExecutor()
+    private val localCast = LocalCast(app)
     private val cast = CharacterCast(app) { settings.geminiKey?.takeIf { it.isNotBlank() } }
 
     // Telefon sesi
@@ -87,6 +94,9 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
 
     init {
         Thread({ playLoop() }, "CouchSubs voice").apply { isDaemon = true; start() }
+        LocalTts.init(app)
+        // Telefon içi motor seçiliyse çeviri başlarken açılır; ilk cümle beklemesin.
+        if (settings.engine == 3 && LocalTts.modelReady()) localSynth.execute { LocalTts.start() }
     }
 
     private fun warn(message: String) {
@@ -122,8 +132,11 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
         phoneReady = true
     }
 
-    private fun aiUsable() = settings.engine != 0 && !settings.geminiKey.isNullOrBlank() &&
-        SystemClock.elapsedRealtime() >= aiPausedUntil
+    private fun aiUsable() = when (settings.engine) {
+        0 -> false
+        3 -> LocalTts.modelReady()
+        else -> !settings.geminiKey.isNullOrBlank() && SystemClock.elapsedRealtime() >= aiPausedUntil
+    }
 
     /** [source] oyundaki İngilizce satır (konuşan adı buradan alınır), [translation] Türkçesi, [game] paketin adı. */
     fun say(source: String, translation: String, game: String? = null) {
@@ -136,7 +149,8 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
         if (text.isEmpty()) return
         val line: Line
         synchronized(queueLock) {
-            line = Line(speaker, text, stripLabel(source), game, recent.toList())
+            val dash = source.trimStart().let { it.startsWith("-") || it.startsWith("–") || it.startsWith("—") }
+            line = Line(speaker, text.trimStart('-', '–', '—', ' '), stripLabel(source), game, recent.toList(), dash)
             recent.addLast((speaker?.let { "$it: " } ?: "") + stripLabel(source))
             while (recent.size > 3) recent.removeFirst()
             queue.addLast(line)
@@ -152,6 +166,7 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
     }
 
     private fun startSynthesis(line: Line) {
+        if (settings.engine == 3) return startLocal(line)
         val key = settings.geminiKey ?: return
         val model = if (settings.engine == 2) GeminiSpeech.MODEL else GeminiSpeech.MODEL_FAST
         val voice = if (settings.characterVoices) cast.voiceFor(line.speaker, line.game) else cast.narrator
@@ -184,6 +199,35 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
                 synchronized(line.lock) { line.done = true; line.lock.notifyAll() }
             }
         }
+    }
+
+    /** Telefon içi motor: duygu etiketi İngilizce asıl replikten, ses karakter kadrosundan. */
+    private fun startLocal(line: Line) {
+        val voice = if (settings.characterVoices) localCast.voiceFor(line.speaker, line.newTurn) else "male_1"
+        val text = TurkishSpeech.prepare(line.text, TurkishSpeech.guess(line.source))
+        line.requested = true
+        localSynth.execute {
+            try {
+                if (!line.cancelled && running) {
+                    LocalTts.stream(text, voice, { line.cancelled || !running }) { chunk ->
+                        synchronized(line.lock) { line.pcm.write(chunk); line.lock.notifyAll() }
+                    }
+                }
+            } catch (error: Throwable) {
+                Log.w(TAG, "telefon içi ses", error)
+                line.failed = true
+                (LocalTts.state.value as? LocalTts.State.Failed)?.let { warnOnce(it.message) }
+            } finally {
+                synchronized(line.lock) { line.done = true; line.lock.notifyAll() }
+            }
+        }
+    }
+
+    @Volatile private var lastWarning = ""
+    private fun warnOnce(message: String) {
+        if (message == lastWarning) return
+        lastWarning = message
+        warn(message)
     }
 
     /**
@@ -227,7 +271,8 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
         val speed = (base + waiting * 0.2f).coerceAtMost(1.5f)
         runCatching { out.playbackParams = PlaybackParams().setSpeed(speed).setPitch(1f) }
         var offset = 0
-        val firstDeadline = SystemClock.elapsedRealtime() + FIRST_AUDIO_TIMEOUT_MS
+        val firstDeadline = SystemClock.elapsedRealtime() +
+            if (settings.engine == 3) (if (LocalTts.ready) LOCAL_FIRST_AUDIO_TIMEOUT_MS else LOCAL_START_TIMEOUT_MS) else FIRST_AUDIO_TIMEOUT_MS
         while (running && !line.cancelled) {
             var timedOut = false
             val chunk: ByteArray = synchronized(line.lock) {
@@ -328,6 +373,7 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
         synchronized(queueLock) { queue.forEach { it.cancelled = true }; queueLock.notifyAll() }
         utteranceDone?.countDown()
         synth.shutdownNow()
+        localSynth.shutdownNow()
         cast.close()
         runCatching { tts.stop(); tts.shutdown() }
         runCatching { track?.pause(); track?.flush(); track?.release() }
@@ -344,6 +390,9 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
         const val STALE_MS = 5_000L
         /** Yapay zekâ sesi bu sürede başlamazsa satır telefon sesiyle okunur. */
         const val FIRST_AUDIO_TIMEOUT_MS = 3_500L
+        const val LOCAL_FIRST_AUDIO_TIMEOUT_MS = 4_000L
+        /** Motor ilk kez açılırken (model belleğe yüklenir) ilk satır biraz daha beklenebilir. */
+        const val LOCAL_START_TIMEOUT_MS = 20_000L
         val PITCHES = floatArrayOf(1.0f, 0.88f, 1.12f, 0.94f, 1.06f, 0.82f, 1.18f)
     }
 }

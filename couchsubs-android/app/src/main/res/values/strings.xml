@@ -263,6 +263,8 @@
     <string name="settings_voice_engine_phone">Telefon sesi (internetsiz)</string>
     <string name="settings_voice_engine_ai">Yapay zekâ: hızlı, duygulu</string>
     <string name="settings_voice_engine_ai_fast">Yapay zekâ: en kaliteli (daha yavaş)</string>
+    <string name="settings_voice_engine_local">Telefon içi yapay zekâ: internetsiz, duygulu</string>
+    <string name="settings_voice_local_model">İnternetsiz ses modeli</string>
     <string name="settings_voice_key">Gemini anahtarı</string>
     <string name="settings_voice_key_saved">Kayıtlı</string>
     <string name="settings_voice_key_missing">Yok: yapay zekâ sesi için gerekli</string>
