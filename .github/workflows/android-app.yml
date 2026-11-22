@@ -72,7 +72,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: sesli-couchsubs-2026
           ANDROID_KEY_ALIAS: couchsubs
         run: |
-          gradle assembleRelease -Pcouchsubs.patchChiaki=true -Pcouchsubs.requireTvPackages=true --no-daemon
+          gradle assembleRelease -Pcouchsubs.versionCode=${{ github.run_number }}00 -Pcouchsubs.versionName=sesli-${{ github.run_number }} -Pcouchsubs.patchChiaki=true -Pcouchsubs.requireTvPackages=true --no-daemon
           mkdir -p ../dist
           cp app/build/outputs/apk/release/*.apk ../dist/CouchSubs-sesli.apk
       - name: APK'yı doğrula
