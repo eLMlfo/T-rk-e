@@ -27,11 +27,36 @@ object GeminiSpeech {
     class RateLimited(message: String) : IOException(message)
     class Rejected(val status: Int, message: String) : IOException(message)
 
+    /** İstek biçimi: yeni (speech_metadata + voiceConfig.voice) reddedilirse eski biçim denenir ve hatırlanır. */
+    @Volatile var legacy = false
+
     fun stream(
         key: String, model: String, voice: String, text: String, style: String,
         cancelled: () -> Boolean, onPcm: (ByteArray) -> Unit,
     ) {
-        val body = JSONObject()
+        if (!legacy) {
+            try {
+                return streamOnce(key, model, voice, text, style, false, cancelled, onPcm)
+            } catch (error: Rejected) {
+                if (error.status != 400) throw error
+                legacy = true
+            }
+        }
+        streamOnce(key, model, voice, text, style, true, cancelled, onPcm)
+    }
+
+    private fun streamOnce(
+        key: String, model: String, voice: String, text: String, style: String, old: Boolean,
+        cancelled: () -> Boolean, onPcm: (ByteArray) -> Unit,
+    ) {
+        val body = if (old) JSONObject()
+            .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(
+                JSONObject().put("text", "Say in Turkish, $style: $text")))))
+            .put("generationConfig", JSONObject()
+                .put("responseModalities", JSONArray().put("AUDIO"))
+                .put("speechConfig", JSONObject().put("voiceConfig", JSONObject().put("prebuiltVoiceConfig",
+                    JSONObject().put("voiceName", voice)))))
+        else JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(
                 JSONObject().put("text", text).put("speech_metadata", JSONObject().put("style", style))))))
             .put("generationConfig", JSONObject()
@@ -49,7 +74,7 @@ object GeminiSpeech {
             connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             val status = connection.responseCode
             if (status == 429) throw RateLimited(readError(connection))
-            if (status >= 400) throw Rejected(status, readError(connection))
+            if (status >= 400) throw Rejected(status, "HTTP $status " + readError(connection))
             BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { reader ->
                 while (true) {
                     if (cancelled()) return
@@ -80,6 +105,26 @@ object GeminiSpeech {
             out += bytes
         }
         return out
+    }
+
+    /** Profil'deki "Yapay zekâ sesini test et": bir cümle üretir, süreleri ve sesi döner. */
+    class TestResult(val ok: Boolean, val firstMs: Long, val totalMs: Long, val pcm: ByteArray, val message: String)
+
+    fun test(key: String, model: String): TestResult {
+        val started = System.currentTimeMillis()
+        var first = 0L
+        val out = java.io.ByteArrayOutputStream()
+        return try {
+            stream(key, model, "Algenib", "Hey! Buraya gel, hemen! Polisler geliyor, koş!", "panicked and urgent, shouting", { false }) {
+                if (first == 0L) first = System.currentTimeMillis() - started
+                out.write(it)
+            }
+            val bytes = out.toByteArray()
+            TestResult(bytes.isNotEmpty(), first, System.currentTimeMillis() - started, bytes,
+                if (bytes.isEmpty()) "Yanıt geldi ama içinde ses yok." else if (legacy) "Eski istek biçimiyle çalıştı." else "")
+        } catch (error: Throwable) {
+            TestResult(false, first, System.currentTimeMillis() - started, ByteArray(0), (error.message ?: error.toString()).take(400))
+        }
     }
 
     private fun readError(connection: HttpURLConnection): String =

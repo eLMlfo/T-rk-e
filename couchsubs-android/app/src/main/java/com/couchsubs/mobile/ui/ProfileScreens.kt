@@ -87,6 +87,8 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var voiceEngine by remember { mutableStateOf(settings.voiceEngine) }
     var geminiSaved by remember { mutableStateOf(!settings.apiKey(EngineChoice.GEMINI).isNullOrBlank()) }
     var keyDialog by remember { mutableStateOf(false) }
+    var voiceTest by remember { mutableStateOf<String?>(null) }
+    val testScope = rememberCoroutineScope()
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
     var usage by remember { mutableStateOf(settings.usageData) }
     LaunchedEffect(Unit) { tvs = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) } }
@@ -131,6 +133,24 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
             { RowItem(stringResource(R.string.settings_voice_key),
                 stringResource(if (geminiSaved) R.string.settings_voice_key_saved else R.string.settings_voice_key_missing),
                 onClick = { keyDialog = true }) },
+            { RowItem("Yapay zekâ sesini test et", "Bir cümle üretir, ne kadar sürdüğünü gösterir ve çalar",
+                onClick = {
+                    val key = settings.apiKey(EngineChoice.GEMINI)
+                    if (key.isNullOrBlank()) { voiceTest = "Önce Gemini anahtarını gir."; return@RowItem }
+                    voiceTest = "Test ediliyor… (iki model denenecek)"
+                    testScope.launch {
+                        val report = withContext(Dispatchers.IO) {
+                            listOf(com.couchsubs.mobile.service.voice.GeminiSpeech.MODEL_FAST to "Hızlı model",
+                                com.couchsubs.mobile.service.voice.GeminiSpeech.MODEL to "Kaliteli model").joinToString("\n\n") { (model, label) ->
+                                val r = com.couchsubs.mobile.service.voice.GeminiSpeech.test(key, model)
+                                if (r.ok) com.couchsubs.mobile.service.voice.PcmPlayer.play(r.pcm)
+                                if (r.ok) "$label ✅ ilk ses ${r.firstMs} ms, toplam ${r.totalMs} ms. ${r.message}"
+                                else "$label ❌ (${r.totalMs} ms): ${r.message}"
+                            }
+                        }
+                        voiceTest = report
+                    }
+                }) },
             { RowItem(stringResource(R.string.settings_voice_speed), stringResource(when (voiceSpeed) {
                     1 -> R.string.settings_voice_speed_fast; 2 -> R.string.settings_voice_speed_faster; else -> R.string.settings_voice_speed_normal
                 }), onClick = { voiceSpeed = (voiceSpeed + 1) % 3; settings.voiceSpeed = voiceSpeed }) },
@@ -148,6 +168,14 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
         ))
         Text(stringResource(R.string.profile_no_account), style = Tokens.Type.caption, color = Tokens.Color.secondary)
         DeveloperSignature()
+    }
+    voiceTest?.let { text ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { voiceTest = null },
+            title = { Text("Yapay zekâ sesi testi") },
+            text = { Text(text) },
+            confirmButton = { androidx.compose.material3.TextButton({ voiceTest = null }) { Text("Tamam") } },
+        )
     }
     if (keyDialog) {
         var entered by remember { mutableStateOf("") }
