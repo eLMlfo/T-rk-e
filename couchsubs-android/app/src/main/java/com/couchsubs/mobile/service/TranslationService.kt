@@ -326,6 +326,8 @@ class TranslationService : Service() {
             SubtitleVoice(this, object : SubtitleVoice.Settings {
                 override val speed get() = settings.voiceSpeed
                 override val characterVoices get() = settings.voiceCharacters
+                override val engine get() = settings.voiceEngine
+                override val geminiKey get() = settings.apiKey(com.couchsubs.mobile.settings.EngineChoice.GEMINI)
             })
         }.onFailure { Log.e(TAG, "voice", it) }.getOrNull()
         reader = SubtitleReader()
@@ -342,7 +344,7 @@ class TranslationService : Service() {
             onPackMissed = { text -> linePool.offer(text) }
             onPairShown = { pair ->
                 LiveState.shown(pair, pair.packId?.let { packTitles?.get(it) ?: it })
-                if (settings.voiceSubtitles) runCatching { voice?.say(pair.source, pair.translation) }
+                if (settings.voiceSubtitles) runCatching { voice?.say(pair.source, pair.translation, pair.packId?.let { packTitles?.get(it) ?: it }) }
                 if (replacement == null) PlayedGame.noteLine(pair.origin == "paket", library)
                 Services.addToHistory(pair.source, pair.translation,
                     if (pair.origin == "paket") com.couchsubs.mobile.core.SubtitleHistory.PACK else com.couchsubs.mobile.core.SubtitleHistory.ENGINE)

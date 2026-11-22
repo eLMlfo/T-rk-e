@@ -84,6 +84,9 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var voice by remember { mutableStateOf(settings.voiceSubtitles) }
     var voiceSpeed by remember { mutableStateOf(settings.voiceSpeed) }
     var voiceCharacters by remember { mutableStateOf(settings.voiceCharacters) }
+    var voiceEngine by remember { mutableStateOf(settings.voiceEngine) }
+    var geminiSaved by remember { mutableStateOf(!settings.apiKey(EngineChoice.GEMINI).isNullOrBlank()) }
+    var keyDialog by remember { mutableStateOf(false) }
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
     var usage by remember { mutableStateOf(settings.usageData) }
     LaunchedEffect(Unit) { tvs = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) } }
@@ -122,6 +125,12 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
             { RowItem(stringResource(R.string.settings_voice), stringResource(R.string.settings_voice_short)) {
                 Switch(voice, { voice = it; settings.voiceSubtitles = it })
             } },
+            { RowItem(stringResource(R.string.settings_voice_engine), stringResource(when (voiceEngine) {
+                    1 -> R.string.settings_voice_engine_ai; 2 -> R.string.settings_voice_engine_ai_fast; else -> R.string.settings_voice_engine_phone
+                }), onClick = { voiceEngine = (voiceEngine + 1) % 3; settings.voiceEngine = voiceEngine }) },
+            { RowItem(stringResource(R.string.settings_voice_key),
+                stringResource(if (geminiSaved) R.string.settings_voice_key_saved else R.string.settings_voice_key_missing),
+                onClick = { keyDialog = true }) },
             { RowItem(stringResource(R.string.settings_voice_speed), stringResource(when (voiceSpeed) {
                     1 -> R.string.settings_voice_speed_fast; 2 -> R.string.settings_voice_speed_faster; else -> R.string.settings_voice_speed_normal
                 }), onClick = { voiceSpeed = (voiceSpeed + 1) % 3; settings.voiceSpeed = voiceSpeed }) },
@@ -139,6 +148,36 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
         ))
         Text(stringResource(R.string.profile_no_account), style = Tokens.Type.caption, color = Tokens.Color.secondary)
         DeveloperSignature()
+    }
+    if (keyDialog) {
+        var entered by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { keyDialog = false },
+            title = { Text(stringResource(R.string.settings_voice_key)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.settings_voice_key_help), style = Tokens.Type.caption)
+                    Spacer(Modifier.size(8.dp))
+                    androidx.compose.material3.OutlinedTextField(entered, { entered = it.trim() }, singleLine = true,
+                        placeholder = { Text("AIza...") })
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton({
+                    if (entered.isNotBlank()) {
+                        settings.setApiKey(EngineChoice.GEMINI, entered)
+                        geminiSaved = true
+                        if (voiceEngine == 0) { voiceEngine = 1; settings.voiceEngine = 1 }
+                    }
+                    keyDialog = false
+                }) { Text(stringResource(R.string.settings_voice_key_save)) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton({ open(context, "https://aistudio.google.com/apikey") }) {
+                    Text(stringResource(R.string.settings_voice_key_get))
+                }
+            },
+        )
     }
 }
 

@@ -253,6 +253,16 @@
     <string name="settings_speaker_names_short">Keeps the character\'s name in front of the translation (ARTHUR: …). The name itself is never translated.</string>
     <string name="settings_voice">Read Turkish aloud</string>
     <string name="settings_voice_short">The translation is spoken in Turkish on the phone, so your eyes stay on the TV. Turning down the game\'s dialogue volume helps.</string>
+    <string name="settings_voice_engine">Voice engine</string>
+    <string name="settings_voice_engine_phone">Phone voice (offline)</string>
+    <string name="settings_voice_engine_ai">AI: realistic, expressive</string>
+    <string name="settings_voice_engine_ai_fast">AI: faster</string>
+    <string name="settings_voice_key">Gemini key</string>
+    <string name="settings_voice_key_saved">Saved</string>
+    <string name="settings_voice_key_missing">Missing: needed for AI voice</string>
+    <string name="settings_voice_key_help">Free key: at aistudio.google.com/apikey press \"Create API key\" with your Google account and paste it here.</string>
+    <string name="settings_voice_key_save">Save</string>
+    <string name="settings_voice_key_get">Get a key</string>
     <string name="settings_voice_speed">Voice speed</string>
     <string name="settings_voice_speed_normal">Normal (speeds up when needed)</string>
     <string name="settings_voice_speed_fast">Fast</string>

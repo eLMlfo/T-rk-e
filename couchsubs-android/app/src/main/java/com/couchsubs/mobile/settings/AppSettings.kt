@@ -167,6 +167,11 @@ class AppSettings(context: Context) : AreaStore {
         get() = prefs.getInt("voiceSpeed", 0)
         set(value) = prefs.edit().putInt("voiceSpeed", value).apply()
 
+    /** Sesli okuma motoru: 0 telefon, 1 yapay zekâ (Gemini TTS), 2 yapay zekâ hızlı model. Anahtar: apiKey(GEMINI). */
+    var voiceEngine: Int
+        get() = prefs.getInt("voiceEngine", 0)
+        set(value) = prefs.edit().putInt("voiceEngine", value).apply()
+
     /** Konuşan adı olan satırlarda her karakter kendi sesi ve tonuyla okunur. */
     var voiceCharacters: Boolean
         get() = prefs.getBoolean("voiceCharacters", true)

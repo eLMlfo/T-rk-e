@@ -259,6 +259,16 @@
     <string name="settings_speaker_names_short">Karakterin adı çevirinin başında kalır (ARTHUR: …). Adın kendisi hiçbir zaman çevrilmez.</string>
     <string name="settings_voice">Türkçeyi sesli oku</string>
     <string name="settings_voice_short">Çeviri telefonun hoparlöründen Türkçe okunur; gözün TV\'de kalır. Oyunun diyalog sesini kısman iyi olur.</string>
+    <string name="settings_voice_engine">Ses motoru</string>
+    <string name="settings_voice_engine_phone">Telefon sesi (internetsiz)</string>
+    <string name="settings_voice_engine_ai">Yapay zekâ: gerçekçi, duygulu</string>
+    <string name="settings_voice_engine_ai_fast">Yapay zekâ: daha hızlı</string>
+    <string name="settings_voice_key">Gemini anahtarı</string>
+    <string name="settings_voice_key_saved">Kayıtlı</string>
+    <string name="settings_voice_key_missing">Yok: yapay zekâ sesi için gerekli</string>
+    <string name="settings_voice_key_help">Ücretsiz anahtar: aistudio.google.com/apikey adresinde Google hesabınla \"Create API key\"e bas, çıkan anahtarı buraya yapıştır.</string>
+    <string name="settings_voice_key_save">Kaydet</string>
+    <string name="settings_voice_key_get">Anahtar al</string>
     <string name="settings_voice_speed">Ses hızı</string>
     <string name="settings_voice_speed_normal">Normal (gerekince hızlanır)</string>
     <string name="settings_voice_speed_fast">Hızlı</string>

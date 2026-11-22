@@ -3,141 +3,307 @@ package com.couchsubs.mobile.service
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
+import android.media.PlaybackParams
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
 import android.widget.Toast
+import com.couchsubs.mobile.service.voice.CharacterCast
+import com.couchsubs.mobile.service.voice.GeminiSpeech
+import java.io.ByteArrayOutputStream
+import java.util.ArrayDeque
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
 /**
- * Telefon modunda Türkçe çeviriyi telefonun konuşma motoruyla (Android TextToSpeech) sesli okur; oyuncu gözünü
- * TV'den ayırmadan altyazıyı dinler.
+ * Türkçe çeviriyi sesli okur (telefon modunda gözü TV'de tutmak için).
  *
- * - **En iyi Türkçe ses:** telefondaki Türkçe seslerden kalitesi en yüksek olanı seçilir (Google'ın internet sesleri
- *   gömülü seslerden çok daha doğaldır; internet yoksa motor gömülü sese döner).
- * - **Altyazıya yetişen hız:** satırların ne sıklıkla geldiği ölçülür; cümle bir sonraki satırdan önce bitecek kadar
- *   hızlandırılır, ama anlaşılır kalması için üst sınır vardır.
- * - **Duygu:** ünlem, soru, üç nokta ve büyük harfle bağırma cümlenin tonunu ve hızını değiştirir.
- * - **Karakterlere farklı ses:** konuşan adı ("JASON:") varsa her karaktere hep aynı kalan ayrı bir ses ve ton verilir.
+ * Sıra, kesme yok: her satır sıraya girer ve sonuna kadar okunur; yeni satır eskisini kesmez. Sıra birikirse okuma
+ * hızlanır (yapay zekâ sesinde perde korunarak); çok birikirse en eski bekleyen satır bütünüyle atlanır, çalan cümle
+ * yarıda kalmaz. Çok bekleyip bayatlamış satır da atlanır.
+ *
+ * İki ses motoru:
+ * - Yapay zekâ (Gemini TTS, anahtar gerekir): her karaktere ayrı gerçekçi ses, oyundaki İngilizce repliğin duygusuyla
+ *   oyunculuk; ses akışlı gelir ve sıradaki satır önceden hazırlanır, gecikme kısalır.
+ * - Telefon (Android TextToSpeech): internetsiz, ücretsiz; yapay zekâ kotası dolarsa ya da hata verirse otomatik
+ *   olarak buna dönülür.
  */
 class SubtitleVoice(context: Context, private val settings: Settings) {
-    /** Ayarlar her satırda yeniden okunur; çeviri sürerken değiştirilebilir. */
     interface Settings {
-        /** 0 normal, 1 hızlı, 2 çok hızlı. */
+        /** 0 normal, 1 hızlı, 2 çok hızlı (taban hız; birikince ayrıca hızlanır). */
         val speed: Int
         val characterVoices: Boolean
+        /** 0 telefon, 1 yapay zekâ, 2 yapay zekâ (hızlı model). */
+        val engine: Int
+        val geminiKey: String?
     }
 
-    @Volatile private var ready = false
+    private class Line(
+        val speaker: String?, val text: String, val source: String, val game: String?, val context: List<String>,
+    ) {
+        val at: Long = SystemClock.elapsedRealtime()
+        /** Yapay zekâ sesinin PCM'i üretildikçe buraya yazılır. */
+        val pcm = ByteArrayOutputStream()
+        @Volatile var requested = false
+        @Volatile var done = false
+        @Volatile var failed = false
+        @Volatile var cancelled = false
+        @Volatile var started = false
+        val lock = Object()
+    }
+
     private val app = context.applicationContext
-    private var voices: List<Voice> = emptyList()
-    private var mainVoice: Voice? = null
-    private val characterVoice = HashMap<String, Pair<Voice?, Float>>()
-    private var lastLineAt = 0L
-    private var gapMs = DEFAULT_GAP_MS.toDouble()
+    private val queue = ArrayDeque<Line>()
+    private val recent = ArrayDeque<String>()
+    private val queueLock = Object()
+    @Volatile private var running = true
+    @Volatile private var aiPausedUntil = 0L
+    private val synth = Executors.newFixedThreadPool(2)
+    private val cast = CharacterCast(app) { settings.geminiKey?.takeIf { it.isNotBlank() } }
 
-    private fun warn(message: String) = Handler(Looper.getMainLooper()).post {
-        Toast.makeText(app, message, Toast.LENGTH_LONG).show()
+    // Telefon sesi
+    @Volatile private var phoneReady = false
+    private var phoneVoices: List<Voice> = emptyList()
+    private var phoneMain: Voice? = null
+    @Volatile private var utteranceDone: CountDownLatch? = null
+    private val tts: TextToSpeech = TextToSpeech(app) { status -> onPhoneInit(status) }
+
+    // Yapay zekâ sesi
+    private var track: AudioTrack? = null
+    private var framesWritten = 0L
+
+    init {
+        Thread({ playLoop() }, "CouchSubs voice").apply { isDaemon = true; start() }
     }
 
-    private val tts: TextToSpeech = TextToSpeech(app) { status -> onInit(status) }
+    private fun warn(message: String) {
+        Handler(Looper.getMainLooper()).post { Toast.makeText(app, message, Toast.LENGTH_LONG).show() }
+    }
 
-    private fun onInit(status: Int) {
+    private fun onPhoneInit(status: Int) {
         if (status != TextToSpeech.SUCCESS) {
             Log.w(TAG, "TextToSpeech başlatılamadı: $status")
-            warn("Sesli okuma açılamadı: telefonda konuşma motoru yok. Play Store'dan \"Google Konuşma Hizmetleri\"ni kur.")
+            if (!aiUsable()) warn("Sesli okuma açılamadı: telefonda konuşma motoru yok. Play Store'dan \"Google Konuşma Hizmetleri\"ni kur.")
             return
         }
         val result = tts.setLanguage(TURKISH)
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            Log.w(TAG, "Türkçe ses yok: $result")
-            warn("Türkçe ses yüklü değil: Ayarlar > Metin okuma > Google > Türkçe sesi indir.")
+            if (!aiUsable()) warn("Türkçe ses yüklü değil: Ayarlar > Metin okuma > Google > Türkçe sesi indir.")
             return
         }
-        // Kurulu Türkçe sesler, en kalitelisi önce (aynı kalitede internet sesi önce: daha doğal).
-        voices = runCatching { tts.voices.orEmpty() }.getOrDefault(emptySet())
+        phoneVoices = runCatching { tts.voices.orEmpty() }.getOrDefault(emptySet())
             .filter { it.locale.language == "tr" && TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features }
             .sortedWith(compareByDescending<Voice> { it.quality }.thenByDescending { it.isNetworkConnectionRequired }.thenBy { it.name })
-        mainVoice = voices.firstOrNull()
-        mainVoice?.let { runCatching { tts.voice = it } }
-        Log.i(TAG, "Türkçe sesler: ${voices.joinToString { "${it.name}(${it.quality})" }}; seçilen ${mainVoice?.name}")
-        tts.setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
-        )
-        ready = true
+        phoneMain = phoneVoices.firstOrNull()
+        phoneMain?.let { runCatching { tts.voice = it } }
+        tts.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {}
+            override fun onDone(utteranceId: String?) { utteranceDone?.countDown() }
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) { utteranceDone?.countDown() }
+            override fun onError(utteranceId: String?, errorCode: Int) { utteranceDone?.countDown() }
+            override fun onStop(utteranceId: String?, interrupted: Boolean) { utteranceDone?.countDown() }
+        })
+        phoneReady = true
     }
 
-    /**
-     * [source] oyundaki İngilizce satır (konuşan adı buradan alınır), [translation] Türkçesi. Yeni satır eskisini keser;
-     * hız ayarlandığı için çoğu cümle kesilmeden biter.
-     */
-    @Synchronized
-    fun say(source: String, translation: String) {
-        if (!ready) return
-        val now = SystemClock.elapsedRealtime()
-        if (lastLineAt > 0) {
-            val gap = (now - lastLineAt).coerceIn(MIN_GAP_MS, MAX_GAP_MS)
-            gapMs = gapMs * 0.6 + gap * 0.4
-        }
-        lastLineAt = now
+    private fun aiUsable() = settings.engine != 0 && !settings.geminiKey.isNullOrBlank() &&
+        SystemClock.elapsedRealtime() >= aiPausedUntil
 
+    /** [source] oyundaki İngilizce satır (konuşan adı buradan alınır), [translation] Türkçesi, [game] paketin adı. */
+    fun say(source: String, translation: String, game: String? = null) {
+        if (!running) return
         val speaker = speakerOf(source) ?: speakerOf(translation)
-        val sentence = stripLabel(translation)
-        if (sentence.isEmpty()) return
-
-        // Hız: ayardaki taban hız; cümle bir sonraki satıra yetişmiyorsa üst sınıra kadar hızlanır.
-        val base = when (settings.speed) { 1 -> 1.15f; 2 -> 1.3f; else -> 1.0f }
-        val neededMs = sentence.length / CHARS_PER_SECOND * 1000.0
-        val availableMs = gapMs * 0.9
-        val catchUp = (neededMs / (availableMs * base)).toFloat().coerceAtLeast(1f)
-        var rate = (base * catchUp).coerceAtMost(MAX_RATE)
-        var pitch = 1.0f
-
-        // Karakter sesi.
-        var voice = mainVoice
-        if (speaker != null && settings.characterVoices) {
-            val (v, p) = characterVoice.getOrPut(speaker) { pickCharacter(speaker) }
-            voice = v ?: mainVoice
-            pitch = p
+        val text = stripLabel(translation)
+        if (text.isEmpty()) return
+        val line: Line
+        synchronized(queueLock) {
+            line = Line(speaker, text, stripLabel(source), game, recent.toList())
+            recent.addLast((speaker?.let { "$it: " } ?: "") + stripLabel(source))
+            while (recent.size > 3) recent.removeFirst()
+            queue.addLast(line)
+            // Çok birikirse en eski bekleyen (henüz çalmaya başlamamış) satır atlanır.
+            while (queue.count { !it.started } > MAX_WAITING) {
+                val oldest = queue.firstOrNull { !it.started } ?: break
+                oldest.cancelled = true
+                queue.remove(oldest)
+            }
+            queueLock.notifyAll()
         }
+        if (aiUsable()) startSynthesis(line)
+    }
 
-        // Duygu: cümlenin noktalaması ve bağırması.
+    private fun startSynthesis(line: Line) {
+        val key = settings.geminiKey ?: return
+        val model = if (settings.engine == 2) GeminiSpeech.MODEL_FAST else GeminiSpeech.MODEL
+        val voice = if (settings.characterVoices) cast.voiceFor(line.speaker, line.game) else cast.narrator
+        val style = styleFor(line)
+        line.requested = true
+        synth.execute {
+            try {
+                if (!line.cancelled) {
+                    GeminiSpeech.stream(key, model, voice, line.text, style, { line.cancelled || !running }) { chunk ->
+                        synchronized(line.lock) { line.pcm.write(chunk); line.lock.notifyAll() }
+                    }
+                }
+            } catch (error: GeminiSpeech.RateLimited) {
+                Log.w(TAG, "Gemini kota: ${error.message}")
+                if (SystemClock.elapsedRealtime() >= aiPausedUntil) warn("Yapay zekâ sesinin ücretsiz kotası doldu; bir dakikalığına telefon sesi kullanılıyor.")
+                aiPausedUntil = SystemClock.elapsedRealtime() + 60_000
+                line.failed = true
+            } catch (error: GeminiSpeech.Rejected) {
+                Log.w(TAG, "Gemini red ${error.status}: ${error.message}")
+                if (error.status == 400 || error.status == 401 || error.status == 403) {
+                    if (SystemClock.elapsedRealtime() >= aiPausedUntil) warn("Gemini anahtarı kabul edilmedi; telefon sesi kullanılıyor. Anahtarı Profil'den kontrol et.")
+                    aiPausedUntil = SystemClock.elapsedRealtime() + 5 * 60_000
+                }
+                line.failed = true
+            } catch (error: Throwable) {
+                Log.w(TAG, "Gemini ses", error)
+                line.failed = true
+            } finally {
+                synchronized(line.lock) { line.done = true; line.lock.notifyAll() }
+            }
+        }
+    }
+
+    /** Oyunculuk talimatı: model asıl İngilizce repliğin duygusunu Türkçeye taşır. */
+    private fun styleFor(line: Line): String {
+        val who = line.speaker?.let { "the character $it" } ?: "the speaking character (calm and clear if it is an objective or hint)"
+        val scene = line.game?.let { "a scene from the video game $it" } ?: "a scene from a cinematic video game"
+        val before = if (line.context.isEmpty()) "" else " Preceding lines in the scene: ${line.context.joinToString(" / ")}."
+        return "You are a top Turkish voice actor dubbing $scene. Perform this Turkish line as $who, sounding like a real " +
+            "person in the moment, never like someone reading text. Match the exact emotion, intensity, volume and " +
+            "attitude of the original English line: \"${line.source}\" (anger, fear, sarcasm, joy, panic, whispering, " +
+            "shouting, crying, flirting, exhaustion...).$before Natural, fluent conversational Turkish with brisk pacing " +
+            "and no long pauses."
+    }
+
+    private fun playLoop() {
+        while (running) {
+            val line: Line = synchronized(queueLock) {
+                while (running && queue.isEmpty()) queueLock.wait()
+                if (!running) return
+                queue.first().also { it.started = true }
+            }
+            try {
+                val age = SystemClock.elapsedRealtime() - line.at
+                if (!line.cancelled && age < STALE_MS) {
+                    val waiting = synchronized(queueLock) { queue.size - 1 }
+                    val tryAi = line.requested && !(line.done && line.failed && line.pcm.size() == 0)
+                    if (!(tryAi && playAi(line, waiting))) speakPhone(line, waiting)
+                }
+            } catch (error: InterruptedException) {
+                return
+            } catch (error: Throwable) {
+                Log.w(TAG, "oynatma", error)
+            } finally {
+                synchronized(queueLock) { queue.remove(line) }
+            }
+        }
+    }
+
+    /** Akışlı PCM'i çalar; hiç ses gelmezse false (satır telefon sesiyle okunur). */
+    private fun playAi(line: Line, waiting: Int): Boolean {
+        val out = ensureTrack() ?: return false
+        val base = when (settings.speed) { 1 -> 1.1f; 2 -> 1.2f; else -> 1.0f }
+        val speed = (base + waiting * 0.12f).coerceAtMost(1.45f)
+        runCatching { out.playbackParams = PlaybackParams().setSpeed(speed).setPitch(1f) }
+        var offset = 0
+        val firstDeadline = SystemClock.elapsedRealtime() + FIRST_AUDIO_TIMEOUT_MS
+        while (running && !line.cancelled) {
+            var timedOut = false
+            val chunk: ByteArray = synchronized(line.lock) {
+                while (running && !line.done && line.pcm.size() <= offset) {
+                    if (offset == 0 && SystemClock.elapsedRealtime() > firstDeadline) { timedOut = true; break }
+                    line.lock.wait(50)
+                }
+                val all = line.pcm.toByteArray()
+                if (all.size > offset) all.copyOfRange(offset, all.size) else ByteArray(0)
+            }
+            if (timedOut) { line.cancelled = true; return false }
+            if (chunk.isEmpty()) break
+            val even = chunk.size - chunk.size % 2
+            if (even == 0) { if (line.done) break else continue }
+            out.write(chunk, 0, even)
+            offset += even
+            framesWritten += even / 2
+        }
+        if (offset == 0) return false
+        drain(out)
+        return true
+    }
+
+    private fun ensureTrack(): AudioTrack? {
+        track?.let { return it }
+        return runCatching {
+            val min = AudioTrack.getMinBufferSize(GeminiSpeech.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            AudioTrack.Builder()
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(GeminiSpeech.SAMPLE_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                .setBufferSizeInBytes(maxOf(min * 2, GeminiSpeech.SAMPLE_RATE))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build().also { it.play(); track = it; framesWritten = 0 }
+        }.onFailure { Log.w(TAG, "AudioTrack", it) }.getOrNull()
+    }
+
+    /** Yazılan ses bitene kadar bekler (sonraki satır üstüne binmesin). */
+    private fun drain(out: AudioTrack) {
+        val deadline = SystemClock.elapsedRealtime() + 15_000
+        while (running && SystemClock.elapsedRealtime() < deadline) {
+            val head = out.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+            if (head >= framesWritten) break
+            Thread.sleep(20)
+        }
+    }
+
+    private fun speakPhone(line: Line, waiting: Int) {
+        if (!phoneReady) return
+        val base = when (settings.speed) { 1 -> 1.15f; 2 -> 1.3f; else -> 1.0f }
+        var rate = (base + waiting * 0.15f).coerceAtMost(MAX_PHONE_RATE)
+        var pitch = 1.0f
+        var voice = phoneMain
+        if (line.speaker != null && settings.characterVoices) {
+            val hash = abs(line.speaker.hashCode())
+            pitch = PITCHES[hash % PITCHES.size]
+            val good = phoneVoices.filter { it.quality >= (phoneMain?.quality ?: 0) && it.isNetworkConnectionRequired == phoneMain?.isNetworkConnectionRequired }
+            if (good.size > 1) voice = good[hash % good.size]
+        }
+        val sentence = line.text
         val letters = sentence.filter { it.isLetter() }
         val shouting = letters.length >= 4 && letters.count { it.isUpperCase() } > letters.length * 0.8
         when {
-            shouting || sentence.endsWith("!") || sentence.contains("!!") -> { pitch *= 1.12f; rate *= 1.08f }
+            shouting || sentence.endsWith("!") -> { pitch *= 1.12f; rate *= 1.08f }
             sentence.endsWith("?") -> pitch *= 1.06f
             sentence.endsWith("...") || sentence.endsWith("…") -> { pitch *= 0.95f; rate *= 0.92f }
         }
         val spoken = if (shouting) sentence.lowercase(TURKISH).replaceFirstChar { it.titlecase(TURKISH) } else sentence
-
         if (voice != null && voice != tts.voice) runCatching { tts.voice = voice }
-        tts.setSpeechRate(rate.coerceIn(0.8f, MAX_RATE + 0.1f))
+        tts.setSpeechRate(rate.coerceIn(0.8f, MAX_PHONE_RATE + 0.1f))
         tts.setPitch(pitch.coerceIn(0.75f, 1.35f))
-        tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "couchsubs-line")
-    }
-
-    /** Her karaktere hep aynı ses ve ton: adın özetinden seçilir, oturumdan oturuma değişmez. */
-    private fun pickCharacter(name: String): Pair<Voice?, Float> {
-        val hash = abs(name.hashCode())
-        val pitches = floatArrayOf(1.0f, 0.88f, 1.12f, 0.94f, 1.06f, 0.82f, 1.18f)
-        val pitch = pitches[hash % pitches.size]
-        // Ses seçimi: aynı kalitedeki seçenekler arasından (kötü kalite sese düşmesin).
-        val good = voices.filter { it.quality >= (mainVoice?.quality ?: 0) && it.isNetworkConnectionRequired == mainVoice?.isNetworkConnectionRequired }
-        val voice = if (good.size > 1) good[hash % good.size] else mainVoice
-        return voice to pitch
+        val latch = CountDownLatch(1)
+        utteranceDone = latch
+        tts.speak(spoken, TextToSpeech.QUEUE_ADD, Bundle(), "line-${line.at}")
+        latch.await(20, TimeUnit.SECONDS)
     }
 
     private fun speakerOf(text: String): String? {
         val colon = text.indexOf(':')
-        if (colon !in 2..20) return null
+        if (colon !in 2..24) return null
         val label = text.substring(0, colon).trim()
         val letters = label.filter { it.isLetter() }
         if (letters.isEmpty() || letters.any { it.isLowerCase() }) return null
@@ -146,23 +312,30 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
 
     private fun stripLabel(text: String): String {
         val colon = text.indexOf(": ")
-        return (if (colon in 1..20 && speakerOf(text) != null) text.substring(colon + 2) else text).trim()
+        return (if (colon in 1..24 && speakerOf(text) != null) text.substring(colon + 2) else text).trim()
     }
 
     fun close() {
-        ready = false
+        running = false
+        synchronized(queueLock) { queue.forEach { it.cancelled = true }; queueLock.notifyAll() }
+        utteranceDone?.countDown()
+        synth.shutdownNow()
+        cast.close()
         runCatching { tts.stop(); tts.shutdown() }
+        runCatching { track?.pause(); track?.flush(); track?.release() }
+        track = null
     }
 
     private companion object {
         const val TAG = "SubtitleVoice"
         val TURKISH = Locale("tr", "TR")
-        /** Rahat Türkçe konuşmada saniyede yaklaşık harf (boşluklar dahil), hız 1.0'da. */
-        const val CHARS_PER_SECOND = 14.0
-        /** Bunun üstü anlaşılmaz olur. */
-        const val MAX_RATE = 1.75f
-        const val DEFAULT_GAP_MS = 3500L
-        const val MIN_GAP_MS = 1200L
-        const val MAX_GAP_MS = 7000L
+        const val MAX_PHONE_RATE = 1.75f
+        /** Çalan satırın arkasında en çok bu kadar satır bekler; fazlası (en eskisi) atlanır. */
+        const val MAX_WAITING = 2
+        /** Bu kadar beklemiş satır artık sahneyle uyuşmaz, okunmaz. */
+        const val STALE_MS = 9_000L
+        /** Yapay zekâ sesi bu sürede başlamazsa satır telefon sesiyle okunur. */
+        const val FIRST_AUDIO_TIMEOUT_MS = 3_500L
+        val PITCHES = floatArrayOf(1.0f, 0.88f, 1.12f, 0.94f, 1.06f, 0.82f, 1.18f)
     }
 }
