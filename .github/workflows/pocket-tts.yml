@@ -1,0 +1,143 @@
+# Telefon içi Türkçe dublaj motoru: Kyutai pocket-tts (MIT) Android için derlenir, ARM'da hız ve ses denemesi yapılır.
+name: pocket-tts
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/pocket-tts.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PTTS_TAG: v4.0.1
+  MODEL_REPO: wite-tech/pocket-tts-turkish
+  MODEL_REV: fcbd37c74dc127be846face0ff36062e9a939f7b
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: pocket-tts kaynağı
+        run: git clone --depth 1 --branch "$PTTS_TAG" https://github.com/kyutai-labs/pocket-tts ptts
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ptts/rust
+          key: android
+      - name: cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Derle (arm64-v8a)
+        working-directory: ptts/rust
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_LATEST_HOME }}
+          # ARMv8.2 (2018 sonrası telefonlar): int8 çekirdekleri dotprod ile.
+          RUSTFLAGS: "-C target-feature=+v8.2a,+dotprod,+fp16"
+        run: |
+          cargo ndk -t arm64-v8a --platform 26 build --release --locked 2>&1 | tail -60
+          ls -la target/aarch64-linux-android/release/pocket-tts
+          file target/aarch64-linux-android/release/pocket-tts
+          "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip target/aarch64-linux-android/release/pocket-tts
+          mkdir -p ../../dist && cp target/aarch64-linux-android/release/pocket-tts ../../dist/libpockettts.so
+          ls -la ../../dist
+      - name: Yayınla (tts-engine)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete tts-engine -y --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create tts-engine dist/libpockettts.so -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "pocket-tts Android motoru" --notes "Kyutai pocket-tts $PTTS_TAG (MIT), aarch64-linux-android."
+
+  bench:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - name: pocket-tts kaynağı
+        run: git clone --depth 1 --branch "$PTTS_TAG" https://github.com/kyutai-labs/pocket-tts ptts
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ptts/rust
+          key: arm-bench
+      - name: Derle (Linux ARM, telefon çekirdeğine yakın ayar)
+        working-directory: ptts/rust
+        env:
+          RUSTFLAGS: "-C target-feature=+v8.2a,+dotprod,+fp16"
+        run: cargo build --release --locked 2>&1 | tail -5
+      - name: Model
+        run: |
+          mkdir -p model/voices
+          base="https://huggingface.co/$MODEL_REPO/resolve/$MODEL_REV"
+          for f in config.yaml model.safetensors tokenizer.model voices/female_1.wav voices/female_2.wav voices/female_3.wav voices/male_1.wav voices/male_2.wav voices/male_3.wav; do
+            curl -sfL -o "model/$f" "$base/$f"
+          done
+          ls -laR model
+          cat model/config.yaml
+          dir=$(pwd)/model
+          grep -v -e '^\s*weights_path:' -e '^\s*tokenizer_path:' -e '^\s*capitalize_first_letter:' model/config.yaml > model/local.yaml || true
+          python3 - "$dir" <<'EOF'
+          import sys,re
+          d=sys.argv[1]; src=open(d+'/config.yaml').read().replace('\r\n','\n').split('\n'); out=[]
+          for line in src:
+              t=line.strip(); ind=line[:len(line)-len(line.lstrip(' '))]
+              if t.startswith('weights_path:'): out.append(ind+"weights_path: '"+d+"/model.safetensors'")
+              elif t.startswith('tokenizer_path:'): out.append(ind+"tokenizer_path: '"+d+"/tokenizer.model'")
+              elif t.startswith('capitalize_first_letter:'): continue
+              else: out.append(line)
+          while out and out[-1]=='': out.pop()
+          open(d+'/local.yaml','w').write('\n'.join(out)+'\ncapitalize_first_letter: false\n')
+          EOF
+          cat model/local.yaml
+      - name: Hız ve ses denemesi
+        run: |
+          B=ptts/rust/target/release/pocket-tts
+          mkdir -p out
+          : > out/rapor.txt
+          echo "CPU: $(lscpu | grep 'Model name' | head -1)" >> out/rapor.txt
+          run() { # ad, iş parçacığı, nicemleme, ses, metin
+            name=$1; th=$2; q=$3; voice=$4; text=$5
+            start=$(date +%s.%N)
+            RAYON_NUM_THREADS=$th $B generate --config model/local.yaml $q --voice "model/voices/$voice.wav" --text "$text" --output-path "out/$name.wav" -q 2>/dev/null || RAYON_NUM_THREADS=$th $B generate --config model/local.yaml $q --voice "model/voices/$voice.wav" --text "$text" --output-path "out/$name.wav"
+            end=$(date +%s.%N)
+            dur=$(python3 -c "import wave;w=wave.open('out/$name.wav');print(round(w.getnframes()/w.getframerate(),2))")
+            el=$(python3 -c "print(round($end-$start,2))")
+            echo "$name th=$th q=${q:-yok} ses=${dur}s süre=${el}s hız=$(python3 -c "print(round($dur/$el,2))")x" >> out/rapor.txt
+          }
+          T1="hey! buraya gel, hemen! polisler geliyor, koş!"
+          run hiz_4_f32 4 "" male_1 "$T1"
+          run hiz_2_f32 2 "" male_1 "$T1"
+          run hiz_1_f32 1 "" male_1 "$T1"
+          run hiz_4_q8 4 "--quantize" male_1 "$T1"
+          run hiz_2_q8 2 "--quantize" male_1 "$T1"
+          run hiz_1_q8 1 "--quantize" male_1 "$T1"
+          run duygu_kizgin 4 "--quantize" male_2 "[kızgın] siktir git buradan! seni bir daha görmek istemiyorum!"
+          run duygu_uzgun 4 "--quantize" female_1 "[üzgün] onu kaybettik. her şey benim yüzümden oldu."
+          run duygu_mutlu 4 "--quantize" female_2 "[mutlu] başardık! inanamıyorum, gerçekten başardık!"
+          run duygu_saskin 4 "--quantize" male_3 "[şaşkın] ne? bu nasıl olabilir?"
+          run duygu_sakin 4 "--quantize" female_3 "[sakin] tamam, sakin ol. nefes al, her şey yoluna girecek."
+          run duygu_yok 4 "--quantize" male_1 "bankanın arka kapısından gireceğiz, kameralar on dakika kapalı olacak."
+          cat out/rapor.txt
+      - name: Sunucu ve ilk ses gecikmesi
+        run: |
+          B=ptts/rust/target/release/pocket-tts
+          RAYON_NUM_THREADS=2 $B serve --config model/local.yaml --quantize --host 127.0.0.1 --port 8899 --default-voice model/voices/male_1.wav > serve.log 2>&1 &
+          for i in $(seq 1 90); do curl -sf http://127.0.0.1:8899/health && break; sleep 1; done; echo
+          python3 -m http.server 8898 --directory model/voices --bind 127.0.0.1 > /dev/null 2>&1 &
+          sleep 1
+          for i in 1 2 3; do
+            curl -s -o out/serve_$i.wav -w "sunucu deneme $i: ilk bayt %{time_starttransfer}s toplam %{time_total}s\n" \
+              --data-urlencode "text=[kızgın] çabuk arabaya bin, gidiyoruz!" \
+              --data-urlencode "voice_url=http://127.0.0.1:8898/female_1.wav" http://127.0.0.1:8899/tts >> out/rapor.txt
+          done
+          tail -20 serve.log
+          cat out/rapor.txt
+      - name: Yayınla (tts-test)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete tts-test -y --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create tts-test out/* -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Türkçe ses denemesi" --notes "pocket-tts + Pocket TTS Turkish, ARM sunucuda hız ve duygu örnekleri."
