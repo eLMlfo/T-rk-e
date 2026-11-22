@@ -322,7 +322,12 @@ class TranslationService : Service() {
             }
         }
         // Ses motoru açılamazsa çeviri yine çalışır (sesli okuma yalnız ek).
-        voice = runCatching { SubtitleVoice(this) }.onFailure { Log.e(TAG, "voice", it) }.getOrNull()
+        voice = runCatching {
+            SubtitleVoice(this, object : SubtitleVoice.Settings {
+                override val speed get() = settings.voiceSpeed
+                override val characterVoices get() = settings.voiceCharacters
+            })
+        }.onFailure { Log.e(TAG, "voice", it) }.getOrNull()
         reader = SubtitleReader()
         pipeline =SubtitlePipeline(translator, subtitleServer).apply {
             // Yarım ya da bozuk okuma hemen çevrilmez; aynı satırın en iyi okuması çevrilir (Windows ve iPhone ile aynı).
@@ -337,7 +342,7 @@ class TranslationService : Service() {
             onPackMissed = { text -> linePool.offer(text) }
             onPairShown = { pair ->
                 LiveState.shown(pair, pair.packId?.let { packTitles?.get(it) ?: it })
-                if (settings.voiceSubtitles) runCatching { voice?.say(pair.translation) }
+                if (settings.voiceSubtitles) runCatching { voice?.say(pair.source, pair.translation) }
                 if (replacement == null) PlayedGame.noteLine(pair.origin == "paket", library)
                 Services.addToHistory(pair.source, pair.translation,
                     if (pair.origin == "paket") com.couchsubs.mobile.core.SubtitleHistory.PACK else com.couchsubs.mobile.core.SubtitleHistory.ENGINE)

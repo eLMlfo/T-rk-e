@@ -82,6 +82,8 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var askGame by remember { mutableStateOf(settings.askGame) }
     var speakerNames by remember { mutableStateOf(settings.showSpeakerNames) }
     var voice by remember { mutableStateOf(settings.voiceSubtitles) }
+    var voiceSpeed by remember { mutableStateOf(settings.voiceSpeed) }
+    var voiceCharacters by remember { mutableStateOf(settings.voiceCharacters) }
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
     var usage by remember { mutableStateOf(settings.usageData) }
     LaunchedEffect(Unit) { tvs = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) } }
@@ -119,6 +121,12 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
             } },
             { RowItem(stringResource(R.string.settings_voice), stringResource(R.string.settings_voice_short)) {
                 Switch(voice, { voice = it; settings.voiceSubtitles = it })
+            } },
+            { RowItem(stringResource(R.string.settings_voice_speed), stringResource(when (voiceSpeed) {
+                    1 -> R.string.settings_voice_speed_fast; 2 -> R.string.settings_voice_speed_faster; else -> R.string.settings_voice_speed_normal
+                }), onClick = { voiceSpeed = (voiceSpeed + 1) % 3; settings.voiceSpeed = voiceSpeed }) },
+            { RowItem(stringResource(R.string.settings_voice_characters), stringResource(R.string.settings_voice_characters_short)) {
+                Switch(voiceCharacters, { voiceCharacters = it; settings.voiceCharacters = it })
             } },
             { RowItem(stringResource(R.string.settings_fast_reading), stringResource(R.string.settings_fast_reading_short)) {
                 Switch(fastReading, { fastReading = it; settings.fastSubtitleDetection = it })

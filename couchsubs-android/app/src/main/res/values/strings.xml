@@ -259,6 +259,12 @@
     <string name="settings_speaker_names_short">Karakterin adı çevirinin başında kalır (ARTHUR: …). Adın kendisi hiçbir zaman çevrilmez.</string>
     <string name="settings_voice">Türkçeyi sesli oku</string>
     <string name="settings_voice_short">Çeviri telefonun hoparlöründen Türkçe okunur; gözün TV\'de kalır. Oyunun diyalog sesini kısman iyi olur.</string>
+    <string name="settings_voice_speed">Ses hızı</string>
+    <string name="settings_voice_speed_normal">Normal (gerekince hızlanır)</string>
+    <string name="settings_voice_speed_fast">Hızlı</string>
+    <string name="settings_voice_speed_faster">Çok hızlı</string>
+    <string name="settings_voice_characters">Karakterlere farklı ses</string>
+    <string name="settings_voice_characters_short">Konuşan adı olan satırlarda her karakter kendi sesi ve tonuyla okunur.</string>
     <string name="settings_fast_reading">Değişmeyen altyazı alanını daha sık oku</string>
     <string name="settings_fast_reading_short">Altyazı alanı değişmemiş görünüyorsa 20 yerine 2 kare sonra yeniden oku. Daha fazla CPU kullanır.</string>
     <string name="settings_xbox_audio">Xbox sesini bu cihazda çal</string>

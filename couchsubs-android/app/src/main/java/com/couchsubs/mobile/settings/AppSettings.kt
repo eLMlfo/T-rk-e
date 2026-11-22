@@ -162,6 +162,16 @@ class AppSettings(context: Context) : AreaStore {
         get() = prefs.getBoolean("voiceSubtitles", false)
         set(value) = prefs.edit().putBoolean("voiceSubtitles", value).apply()
 
+    /** Sesli okumanın taban hızı: 0 normal, 1 hızlı, 2 çok hızlı (altyazıya yetişmek için ayrıca kendiliğinden hızlanır). */
+    var voiceSpeed: Int
+        get() = prefs.getInt("voiceSpeed", 0)
+        set(value) = prefs.edit().putInt("voiceSpeed", value).apply()
+
+    /** Konuşan adı olan satırlarda her karakter kendi sesi ve tonuyla okunur. */
+    var voiceCharacters: Boolean
+        get() = prefs.getBoolean("voiceCharacters", true)
+        set(value) = prefs.edit().putBoolean("voiceCharacters", value).apply()
+
     /**
      * Xbox ev yayınında oyunun sesi bu telefonda çalınır. Xbox uzaktan oynatma sürerken sesi istemciye verip TV'yi
      * susturabilir; kapalıyken ses hiçbir yerden gelmeyebilir, bu yüzden varsayılan açık. PS5'i etkilemez.
