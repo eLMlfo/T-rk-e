@@ -19,6 +19,13 @@
 
     <!-- largeHeap: uygulamayla gelen dokuz oyun paketi bellekte ~50 MB tutar; Compose, ML Kit ve görüntü akışıyla birlikte
          varsayılan sınır zayıf telefonda yetmiyor, çeviri başlarken uygulama kapanıyordu. -->
+    <!-- Android 11+: Türkçe sesli okuma için telefonun konuşma motoru (TextToSpeech) görünür olmalı. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".CouchSubsApp"
         android:allowBackup="false"

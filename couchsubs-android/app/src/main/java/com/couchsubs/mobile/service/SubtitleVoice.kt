@@ -3,6 +3,9 @@ package com.couchsubs.mobile.service
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import java.util.Locale
@@ -14,14 +17,20 @@ import java.util.Locale
  */
 class SubtitleVoice(context: Context, private val rate: Float = 1.1f) {
     @Volatile private var ready = false
+    private val app = context.applicationContext
+    private fun warn(message: String) = Handler(Looper.getMainLooper()).post {
+        Toast.makeText(app, message, Toast.LENGTH_LONG).show()
+    }
     private val tts: TextToSpeech = TextToSpeech(context.applicationContext) { status ->
         if (status != TextToSpeech.SUCCESS) {
             Log.w(TAG, "TextToSpeech başlatılamadı: $status")
+            warn("Sesli okuma açılamadı: telefonda konuşma motoru yok. Play Store'dan \"Google Konuşma Hizmetleri\"ni kur.")
             return@TextToSpeech
         }
         val result = engine().setLanguage(Locale("tr", "TR"))
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
             Log.w(TAG, "Türkçe ses yok: $result")
+            warn("Türkçe ses yüklü değil: Ayarlar > Metin okuma > Google > Türkçe sesi indir.")
             return@TextToSpeech
         }
         engine().setSpeechRate(rate)
