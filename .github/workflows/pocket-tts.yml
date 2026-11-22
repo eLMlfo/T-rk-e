@@ -33,12 +33,13 @@ jobs:
       - name: Derle (arm64-v8a)
         working-directory: ptts/rust
         env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
-          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_LATEST_HOME }}
           # ARMv8.2 (2018 sonrası telefonlar): int8 çekirdekleri dotprod ile.
           RUSTFLAGS: "-C target-feature=+v8.2a,+dotprod,+fp16"
         run: |
-          cargo ndk -t arm64-v8a --platform 26 build --release --locked 2>&1 | tail -60
+          set -o pipefail
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME"
+          echo "NDK: $ANDROID_NDK_HOME"
+          cargo ndk -t arm64-v8a --platform 26 build --release --locked 2>&1 | tail -80
           ls -la target/aarch64-linux-android/release/pocket-tts
           file target/aarch64-linux-android/release/pocket-tts
           "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip target/aarch64-linux-android/release/pocket-tts
@@ -53,6 +54,7 @@ jobs:
             --title "pocket-tts Android motoru" --notes "Kyutai pocket-tts $PTTS_TAG (MIT), aarch64-linux-android."
 
   bench:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04-arm
     steps:
       - name: pocket-tts kaynağı
