@@ -67,10 +67,19 @@ jobs:
         working-directory: couchsubs-android
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Kişisel yapı: sabit anahtar, böylece yeni sürüm eskisinin üstüne kurulur.
+          ANDROID_KEYSTORE_FILE: ${{ github.workspace }}/couchsubs-android/sesli.keystore
+          ANDROID_KEYSTORE_PASSWORD: sesli-couchsubs-2026
+          ANDROID_KEY_ALIAS: couchsubs
         run: |
           gradle assembleRelease -Pcouchsubs.patchChiaki=true -Pcouchsubs.requireTvPackages=true --no-daemon
           mkdir -p ../dist
           cp app/build/outputs/apk/release/*.apk ../dist/CouchSubs-sesli.apk
+      - name: APK'yı doğrula
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs dist/CouchSubs-sesli.apk
+          "$BT/aapt2" dump badging dist/CouchSubs-sesli.apk | head -20
       - uses: actions/upload-artifact@v4
         with:
           name: couchsubs-android-app
