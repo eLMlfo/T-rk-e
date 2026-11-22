@@ -145,7 +145,7 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
                         !tts.modelReady() -> { Thread({ tts.download() }, "model download").start()
                             if (voiceEngine != 3) { voiceEngine = 3; settings.voiceEngine = 3 } }
                         else -> {
-                            voiceTest = "Telefon içi ses deneniyor… (ilk açılışta model belleğe yüklenir, biraz sürebilir)"
+                            voiceTest = "Telefonuna en uygun motor ayarı aranıyor… (4 ayar denenecek, 1-2 dakika sürer, sonunda iki örnek cümle çalar)"
                             testScope.launch {
                                 voiceTest = withContext(Dispatchers.IO) { localTest() }
                             }
@@ -531,34 +531,43 @@ private fun ColorSwatch(option: SubtitleTextColor, selected: Boolean, onSelect: 
 }
 
 
-/** Telefon içi sesi dener: motoru açar, bir kızgın bir de sakin cümle okutur, süreleri yazar. */
+/**
+ * Telefon içi sesi dener ve bu telefona en uygun motor ayarını bulur: farklı çekirdek sayıları ve büyük çekirdeğe
+ * sabitleme denenir, en hızlısı kaydedilir. Sonunda en iyi ayarla iki örnek cümle (kızgın erkek, sakin kadın) çalınır.
+ */
 private fun localTest(): String {
     val tts = com.couchsubs.mobile.service.voice.LocalTts
     val speech = com.couchsubs.mobile.service.voice.TurkishSpeech
-    val opened = System.currentTimeMillis()
-    if (!tts.start()) return "❌ " + tts.describe(tts.state.value)
-    val openMs = System.currentTimeMillis() - opened
-    val lines = listOf(
+    val big = tts.bigCores()
+    val report = StringBuilder("Büyük çekirdek: ${big.size} (${big.joinToString(",")})\n")
+    val sample = speech.prepare("Bankanın arka kapısından gireceğiz, kameralar on dakika kapalı olacak.", null)
+    val candidates = linkedSetOf(big.size.coerceIn(2, 4) to true, 2 to true, 4 to false, 3 to false)
+    var best: Pair<Int, Boolean>? = null
+    var bestSpeed = 0.0
+    for ((threads, pinned) in candidates) {
+        val opened = System.currentTimeMillis()
+        if (!tts.start(threads, pinned)) { report.append("❌ $threads çekirdek: ${tts.describe(tts.state.value)}\n"); continue }
+        val openMs = System.currentTimeMillis() - opened
+        runCatching { tts.measure(sample, "male_1") } // ısınma
+        val (first, audio, total) = runCatching { tts.measure(sample, "male_1") }.getOrElse {
+            report.append("❌ $threads çekirdek: ${it.message}\n"); continue
+        }
+        val speed = audio.toDouble() / maxOf(1, total)
+        report.append("${if (pinned) "📌" else "▫️"} $threads çekirdek: ilk ses $first ms, hız ${"%.1f".format(speed)}x (açılış $openMs ms)\n")
+        if (speed > bestSpeed) { bestSpeed = speed; best = threads to pinned }
+    }
+    val chosen = best ?: return report.append("Motor çalışmadı.").toString()
+    tts.saveTuning(chosen.first, chosen.second)
+    tts.start(chosen.first, chosen.second)
+    report.append("\nSeçilen: ${chosen.first} çekirdek${if (chosen.second) ", büyük çekirdeğe sabit" else ""} (${"%.1f".format(bestSpeed)}x)\n")
+    for ((voice, english, turkish) in listOf(
         Triple("male_2", "Get in the car, now! The cops are coming!", "Arabaya bin, hemen! Polisler geliyor!"),
         Triple("female_2", "It's okay, take a breath.", "Tamam, sakin ol. Bir nefes al."),
-    )
-    val report = StringBuilder("Motor açılışı: $openMs ms\n")
-    for ((voice, english, turkish) in lines) {
+    )) {
         val out = java.io.ByteArrayOutputStream()
-        val start = System.currentTimeMillis()
-        var first = 0L
-        try {
-            tts.stream(speech.prepare(turkish, speech.guess(english)), voice, { false }) {
-                if (first == 0L) first = System.currentTimeMillis() - start
-                out.write(it)
-            }
-        } catch (error: Throwable) {
-            report.append("❌ $voice: ${error.message}\n"); continue
-        }
-        val total = System.currentTimeMillis() - start
-        val audioMs = out.size() / 2 * 1000L / com.couchsubs.mobile.service.voice.GeminiSpeech.SAMPLE_RATE
+        runCatching { tts.stream(speech.prepare(turkish, speech.guess(english)), voice, { false }) { out.write(it) } }
         com.couchsubs.mobile.service.voice.PcmPlayer.play(out.toByteArray())
-        report.append("✅ $voice: ilk ses $first ms, ${audioMs} ms ses $total ms'de üretildi (hız ${"%.1f".format(audioMs.toDouble() / maxOf(1, total))}x)\n")
     }
+    report.append("Hız 1,0x'in üstündeyse ses konuşmadan hızlı üretiliyor demektir; oyunda 2x ve üstü rahat.")
     return report.toString()
 }

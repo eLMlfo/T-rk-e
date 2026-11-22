@@ -189,10 +189,33 @@ object LocalTts {
         return lines.joinToString("\n") + "\ncapitalize_first_letter: false\n"
     }
 
+    /**
+     * İşlemcinin büyük (hızlı) çekirdekleri: en yüksek frekansın %80'ine ulaşanlar. Motor yalnız bunlarda çalışırsa iş
+     * küçük çekirdeklere bölünüp yavaşlamaz (rayon işi eşit böler, en yavaş çekirdek hepsini bekletir).
+     */
+    fun bigCores(): List<Int> {
+        val freqs = (0 until Runtime.getRuntime().availableProcessors()).associateWith { cpu ->
+            runCatching { File("/sys/devices/system/cpu/cpu$cpu/cpufreq/cpuinfo_max_freq").readText().trim().toLong() }.getOrDefault(0L)
+        }
+        val top = freqs.values.maxOrNull() ?: 0L
+        if (top <= 0L) return emptyList()
+        return freqs.filter { it.value >= top * 0.8 }.keys.sorted()
+    }
+
+    private fun prefs() = app.getSharedPreferences("local-tts", Context.MODE_PRIVATE)
+
+    /** Kayıtlı en iyi ayar (deneme sonucu); yoksa büyük çekirdek sayısı. */
+    fun threads(): Int = prefs().getInt("threads", 0).takeIf { it > 0 } ?: bigCores().size.coerceIn(2, 4)
+    fun pinned(): Boolean = prefs().getBoolean("pinned", true)
+    fun saveTuning(threads: Int, pinned: Boolean) = prefs().edit().putInt("threads", threads).putBoolean("pinned", pinned).apply()
+
+    @Volatile private var runningThreads = 0
+    @Volatile private var runningPinned = false
+
     /** Motoru başlatır (gerekirse) ve hazır olana kadar bekler; ilk açılış birkaç saniye sürer. */
-    fun start(): Boolean {
+    fun start(threads: Int = threads(), pinned: Boolean = pinned()): Boolean {
         synchronized(lock) {
-            if (process?.isAlive == true && _state.value == State.Ready) return true
+            if (process?.isAlive == true && _state.value == State.Ready && threads == runningThreads && pinned == runningPinned) return true
             if (!modelReady() || !engine().exists()) return false
             _state.value = State.Starting
             try {
@@ -200,13 +223,22 @@ object LocalTts {
                 startVoiceServer()
                 port = freePort()
                 val directory = dir()
-                val builder = ProcessBuilder(
+                val command = arrayListOf(
                     engine().path, "serve", "--config", File(directory, "local.yaml").path, "--quantize",
                     "--host", "127.0.0.1", "--port", port.toString(),
                     "--default-voice", File(directory, "voices/male_1.wav").path,
-                ).redirectErrorStream(true)
-                // İşlemcinin geri kalanı görüntü çözme ve altyazı okumaya kalsın.
-                builder.environment()["RAYON_NUM_THREADS"] = "3"
+                )
+                // Büyük çekirdeklere sabitle (toybox taskset; yoksa sabitlemeden).
+                val big = bigCores()
+                val taskset = File("/system/bin/taskset")
+                if (pinned && taskset.exists() && big.isNotEmpty() && big.size < Runtime.getRuntime().availableProcessors()) {
+                    val mask = big.fold(0L) { m, cpu -> m or (1L shl cpu) }
+                    command.addAll(0, listOf(taskset.path, java.lang.Long.toHexString(mask)))
+                }
+                val builder = ProcessBuilder(command).redirectErrorStream(true)
+                builder.environment()["RAYON_NUM_THREADS"] = threads.toString()
+                runningThreads = threads
+                runningPinned = pinned
                 // libc++_shared.so motorla birlikte uygulamanın kitaplık klasöründe.
                 builder.environment()["LD_LIBRARY_PATH"] = app.applicationInfo.nativeLibraryDir
                 builder.environment()["HF_HOME"] = File(app.cacheDir, "hf").path
@@ -286,6 +318,15 @@ object LocalTts {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /** Deneme: bir cümleyi üretir, (ilk ses ms, ses ms, üretim ms) döner. */
+    fun measure(text: String, voice: String): Triple<Long, Long, Long> {
+        val start = System.currentTimeMillis()
+        var first = 0L
+        var bytes = 0L
+        stream(text, voice, { false }) { if (first == 0L) first = System.currentTimeMillis() - start; bytes += it.size }
+        return Triple(first, bytes / 2 * 1000 / 24_000, System.currentTimeMillis() - start)
     }
 
     /** Ses kayıtlarını motora yerel adresle verir (motor sesi bir kez hazırlayıp saklar). */
