@@ -549,9 +549,10 @@ private fun localTest(): String {
         if (!tts.start(threads, pinned)) { report.append("❌ $threads çekirdek: ${tts.describe(tts.state.value)}\n"); continue }
         val openMs = System.currentTimeMillis() - opened
         runCatching { tts.measure(sample, "male_1") } // ısınma
-        val (first, audio, total) = runCatching { tts.measure(sample, "male_1") }.getOrElse {
-            report.append("❌ $threads çekirdek: ${it.message}\n"); continue
-        }
+        val result = try { tts.measure(sample, "male_1") } catch (error: Throwable) {
+            report.append("❌ $threads çekirdek: ${error.message}\n"); null
+        } ?: continue
+        val (first, audio, total) = result
         val speed = audio.toDouble() / maxOf(1, total)
         report.append("${if (pinned) "📌" else "▫️"} $threads çekirdek: ilk ses $first ms, hız ${"%.1f".format(speed)}x (açılış $openMs ms)\n")
         if (speed > bestSpeed) { bestSpeed = speed; best = threads to pinned }
