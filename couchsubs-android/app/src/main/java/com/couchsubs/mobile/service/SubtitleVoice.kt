@@ -43,7 +43,7 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
         /** 0 normal, 1 hızlı, 2 çok hızlı (taban hız; birikince ayrıca hızlanır). */
         val speed: Int
         val characterVoices: Boolean
-        /** 0 telefon, 1 yapay zekâ, 2 yapay zekâ (hızlı model). */
+        /** 0 telefon, 1 yapay zekâ (hızlı model, varsayılan), 2 yapay zekâ (en kaliteli, daha yavaş). */
         val engine: Int
         val geminiKey: String?
     }
@@ -68,7 +68,10 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
     private val queueLock = Object()
     @Volatile private var running = true
     @Volatile private var aiPausedUntil = 0L
-    private val synth = Executors.newFixedThreadPool(2)
+    @Volatile private var lastLineAt = 0L
+    @Volatile private var gapMs = 3_500.0
+    private fun averageGap() = gapMs
+    private val synth = Executors.newFixedThreadPool(3)
     private val cast = CharacterCast(app) { settings.geminiKey?.takeIf { it.isNotBlank() } }
 
     // Telefon sesi
@@ -125,6 +128,9 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
     /** [source] oyundaki İngilizce satır (konuşan adı buradan alınır), [translation] Türkçesi, [game] paketin adı. */
     fun say(source: String, translation: String, game: String? = null) {
         if (!running) return
+        val now = SystemClock.elapsedRealtime()
+        if (lastLineAt > 0) gapMs = gapMs * 0.6 + (now - lastLineAt).coerceIn(1_000L, 8_000L) * 0.4
+        lastLineAt = now
         val speaker = speakerOf(source) ?: speakerOf(translation)
         val text = stripLabel(translation)
         if (text.isEmpty()) return
@@ -147,14 +153,14 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
 
     private fun startSynthesis(line: Line) {
         val key = settings.geminiKey ?: return
-        val model = if (settings.engine == 2) GeminiSpeech.MODEL_FAST else GeminiSpeech.MODEL
+        val model = if (settings.engine == 2) GeminiSpeech.MODEL else GeminiSpeech.MODEL_FAST
         val voice = if (settings.characterVoices) cast.voiceFor(line.speaker, line.game) else cast.narrator
         val style = styleFor(line)
         line.requested = true
         synth.execute {
             try {
                 if (!line.cancelled) {
-                    GeminiSpeech.stream(key, model, voice, line.text, style, { line.cancelled || !running }) { chunk ->
+                    GeminiSpeech.stream(key, model, voice, Emotion.of(line.source).tag + line.text, style, { line.cancelled || !running }) { chunk ->
                         synchronized(line.lock) { line.pcm.write(chunk); line.lock.notifyAll() }
                     }
                 }
@@ -180,16 +186,14 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
         }
     }
 
-    /** Oyunculuk talimatı: model asıl İngilizce repliğin duygusunu Türkçeye taşır. */
+    /**
+     * Oyunculuk talimatı: kısa ve net (uzun talimat hem gecikmeyi artırır hem modeli şaşırtır). Duygu, oyundaki
+     * İngilizce asıl repliğin noktalamasından ve sözcüklerinden çıkarılır ([Emotion]).
+     */
     private fun styleFor(line: Line): String {
-        val who = line.speaker?.let { "the character $it" } ?: "the speaking character (calm and clear if it is an objective or hint)"
-        val scene = line.game?.let { "a scene from the video game $it" } ?: "a scene from a cinematic video game"
-        val before = if (line.context.isEmpty()) "" else " Preceding lines in the scene: ${line.context.joinToString(" / ")}."
-        return "You are a top Turkish voice actor dubbing $scene. Perform this Turkish line as $who, sounding like a real " +
-            "person in the moment, never like someone reading text. Match the exact emotion, intensity, volume and " +
-            "attitude of the original English line: \"${line.source}\" (anger, fear, sarcasm, joy, panic, whispering, " +
-            "shouting, crying, flirting, exhaustion...).$before Natural, fluent conversational Turkish with brisk pacing " +
-            "and no long pauses."
+        val emotion = Emotion.of(line.source)
+        val who = line.speaker?.let { "as $it, " } ?: ""
+        return "${emotion.style}; ${who}real person in a gritty crime drama, natural spoken Turkish, fast pace, no pauses"
     }
 
     private fun playLoop() {
@@ -220,7 +224,7 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
     private fun playAi(line: Line, waiting: Int): Boolean {
         val out = ensureTrack() ?: return false
         val base = when (settings.speed) { 1 -> 1.1f; 2 -> 1.2f; else -> 1.0f }
-        val speed = (base + waiting * 0.12f).coerceAtMost(1.45f)
+        val speed = (base + waiting * 0.2f).coerceAtMost(1.5f)
         runCatching { out.playbackParams = PlaybackParams().setSpeed(speed).setPitch(1f) }
         var offset = 0
         val firstDeadline = SystemClock.elapsedRealtime() + FIRST_AUDIO_TIMEOUT_MS
@@ -275,7 +279,10 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
     private fun speakPhone(line: Line, waiting: Int) {
         if (!phoneReady) return
         val base = when (settings.speed) { 1 -> 1.15f; 2 -> 1.3f; else -> 1.0f }
-        var rate = (base + waiting * 0.15f).coerceAtMost(MAX_PHONE_RATE)
+        val gap = averageGap()
+        val needed = line.text.length / 14.0 * 1000.0
+        val catchUp = if (gap > 0) (needed / (gap * 0.9)).toFloat() else 1f
+        var rate = maxOf(base + waiting * 0.25f, base * catchUp).coerceAtMost(MAX_PHONE_RATE)
         var pitch = 1.0f
         var voice = phoneMain
         if (line.speaker != null && settings.characterVoices) {
@@ -332,9 +339,9 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
         val TURKISH = Locale("tr", "TR")
         const val MAX_PHONE_RATE = 1.75f
         /** Çalan satırın arkasında en çok bu kadar satır bekler; fazlası (en eskisi) atlanır. */
-        const val MAX_WAITING = 2
+        const val MAX_WAITING = 1
         /** Bu kadar beklemiş satır artık sahneyle uyuşmaz, okunmaz. */
-        const val STALE_MS = 9_000L
+        const val STALE_MS = 5_000L
         /** Yapay zekâ sesi bu sürede başlamazsa satır telefon sesiyle okunur. */
         const val FIRST_AUDIO_TIMEOUT_MS = 3_500L
         val PITCHES = floatArrayOf(1.0f, 0.88f, 1.12f, 0.94f, 1.06f, 0.82f, 1.18f)
