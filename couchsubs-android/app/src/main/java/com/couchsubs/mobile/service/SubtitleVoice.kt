@@ -165,8 +165,9 @@ class SubtitleVoice(context: Context, private val settings: Settings) {
                 line.failed = true
             } catch (error: GeminiSpeech.Rejected) {
                 Log.w(TAG, "Gemini red ${error.status}: ${error.message}")
-                if (error.status == 400 || error.status == 401 || error.status == 403) {
-                    if (SystemClock.elapsedRealtime() >= aiPausedUntil) warn("Gemini anahtarı kabul edilmedi; telefon sesi kullanılıyor. Anahtarı Profil'den kontrol et.")
+                if (error.status == 400 || error.status == 401 || error.status == 403 || error.status == 404) {
+                    val detail = Regex("\"message\"\\s*:\\s*\"([^\"]{0,120})").find(error.message.orEmpty())?.groupValues?.get(1).orEmpty()
+                    if (SystemClock.elapsedRealtime() >= aiPausedUntil) warn("Yapay zekâ sesi çalışmadı (${error.status}), telefon sesi kullanılıyor. $detail")
                     aiPausedUntil = SystemClock.elapsedRealtime() + 5 * 60_000
                 }
                 line.failed = true
