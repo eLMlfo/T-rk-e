@@ -7,8 +7,8 @@ android {
         applicationId 'com.elmlfo.rastgele'
         minSdk 26
         targetSdk 35
-        versionCode (project.findProperty('vc') ?: '1') as int
-        versionName (project.findProperty('vn') ?: '1.0')
+        versionCode Integer.parseInt((project.findProperty('vc') ?: '1').toString())
+        versionName((project.findProperty('vn') ?: '1.0').toString())
     }
     signingConfigs {
         rel {
