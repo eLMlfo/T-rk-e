@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rastgele — Balık Saati</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: kıyıdaki usta balıkçının defteri — kısa, net, yerel.
+IDEA: iskele panosu + gelgit çizelgesi; günün av eğrisi bir dalga gibi akar.
+PICTURE: 24 saatlik av eğrisi, solunar bantlar, güneş/ay işaretleri, "şimdi" çizgisi.
+COLOUR and TYPE: derin Akdeniz petrolü, köpük beyazı, şamandıra turuncusu; Barlow Condensed + Barlow.
+LAYOUT: tam genişlik deniz bandı üstte, altında içerik, telefonda alt sekme çubuğu.
+*/
+:root{color-scheme:light dark;
+--bg:light-dark(#eef4f3,#071419);--ink:light-dark(#0c2a31,#e3efee);--mut:light-dark(#4f6a70,#8fa9ad);
+--card:light-dark(#ffffff,#0e2127);--line:light-dark(#d5e2e1,#1d353c);
+--sea:light-dark(#0f4c5c,#0a3340);--sea2:light-dark(#17677a,#0f4757);--foam:#eaf6f4;
+--acc:#ff5a36;--acc2:light-dark(#d8401f,#ff7a5c);--sand:light-dark(#e9dcc0,#3a3426);--ok:light-dark(#1b8a5a,#4cc38a);--bad:light-dark(#c62f1c,#ff7a63)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html{scroll-padding-top:72px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip;padding-bottom:84px}
+h1,h2,h3,.num{font-family:"Barlow Condensed",Barlow,sans-serif;font-weight:700;line-height:1.05;margin:0}
+h2{font-size:30px;text-wrap:balance}h3{font-size:21px}
+.band{padding:clamp(18px,4vw,48px) max(5vw,16px)}
+.wrap{max-width:1100px;margin:0 auto}
+.hero{background:var(--sea);color:var(--foam);padding-bottom:10px}
+.scene{position:relative;overflow:hidden;min-height:clamp(340px,40vw,440px)}
+.scene>svg{position:absolute;inset:0;width:100%;height:100%}
+.scene-in{position:relative;z-index:1;padding:clamp(16px,3vw,36px) max(5vw,16px) 84px;text-shadow:0 1px 12px #00141c99}
+.wxline{display:flex;flex-wrap:wrap;gap:6px 14px;font-weight:600;font-size:15px;margin-top:2px}
+.wxline span{white-space:nowrap}
+.wave1{animation:drift 9s linear infinite}.wave2{animation:drift 13s linear infinite reverse}.wave3{animation:drift 6s linear infinite}
+.streak{animation:streak var(--sp,4s) linear infinite}
+@keyframes drift{to{transform:translateX(var(--per,-200px))}}
+@keyframes streak{from{transform:translateX(var(--from))}to{transform:translateX(var(--to))}}
+@media(prefers-reduced-motion:reduce){.wave1,.wave2,.wave3,.streak{animation:none}}
+.fish{width:30px;height:20px;flex:none;vertical-align:middle}
+.wxg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.wxg div{background:var(--bg);border-radius:12px;padding:10px}
+.wxg b{display:block;font-family:"Barlow Condensed",sans-serif;font-size:24px;line-height:1.1}
+.wxg small{color:var(--mut)}
+@media(max-width:420px){.wxg{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.hero .top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brand{font-size:34px;letter-spacing:.01em}.brand span{color:var(--acc)}
+.hero small{color:#a9d3d2}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:12px 0 4px;scrollbar-width:none}
+.chip{flex:none;border:1px solid #ffffff40;background:transparent;color:inherit;border-radius:99px;padding:0 16px;min-height:40px;font:600 15px Barlow,sans-serif;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--foam);color:var(--sea);border-color:var(--foam)}
+.light .chip{border-color:var(--line)}.light .chip[aria-pressed=true]{background:var(--sea);color:var(--foam);border-color:var(--sea)}
+.score{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 18px;align-items:end;margin-top:14px}
+.big{font-size:clamp(76px,18vw,120px);color:#fff}
+.big sup{font-size:.28em;color:#a9d3d2;margin-left:4px}
+.verdict{font-size:20px;font-weight:600;padding-bottom:16px}
+.verdict b{color:var(--acc)}
+.fig{position:relative;height:262px;margin:6px -4px 0}
+.fig>svg{position:absolute;inset:0;width:100%;height:100%}
+.days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:10px}
+.day{background:#ffffff12;border:1px solid transparent;border-radius:12px;color:inherit;padding:8px 2px 6px;text-align:center;cursor:pointer;font:500 13px Barlow,sans-serif;min-height:44px}
+.day[aria-pressed=true]{border-color:var(--acc);background:#ffffff22}
+.day .num{font-size:22px;display:block;color:#fff}
+.day svg{width:18px;height:18px;display:block;margin:2px auto 0}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media(max-width:760px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.card+.card{margin-top:16px}
+.lead{color:var(--mut);margin:6px 0 14px}
+.kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;font-size:16px}
+.kv dt{color:var(--mut)}.kv dd{margin:0;font-weight:600;white-space:nowrap;text-align:right}
+.win{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.win:first-child{border-top:0}
+.tag{display:inline-block;font:600 12px Barlow,sans-serif;padding:2px 8px;border-radius:99px;background:var(--sand);color:var(--ink);white-space:nowrap}
+.tag.hot{background:var(--acc);color:#fff}.tag.ban{background:var(--bad);color:#fff}.tag.ok{background:var(--ok);color:#fff}
+.rows{display:grid;gap:12px}
+.row .lab{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.row .lab b{font-size:17px}
+.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin:5px 0 4px}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--sea2)}
+.bar i.hi{background:var(--acc)}
+.row p{margin:0;color:var(--mut);font-size:14px}
+.seg{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 14px}
+.hs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.hs button{flex:none}
+.seg button,.btn{min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:600 15px Barlow,sans-serif;padding:0 14px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--sea);border-color:var(--sea);color:var(--foam)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.ghost{background:transparent}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.alert{border-radius:14px;padding:12px 14px;background:color-mix(in srgb,var(--bad) 14%,var(--card));border:1px solid var(--bad);margin-bottom:16px;font-weight:500}
+.note{font-size:14px;color:var(--mut)}
+a{color:var(--sea2)}.hero a{color:#bfe9e6}
+label{display:block;font-weight:600;font-size:14px;margin:10px 0 4px}
+input,select,textarea{width:100%;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:16px Barlow,sans-serif;padding:8px 12px}
+textarea{min-height:90px;resize:vertical}
+.f3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.f2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media(max-width:480px){.f3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.sp{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.sp .card{margin:0}
+.sp h3{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.months{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:2px;margin:10px 0 4px}
+.months i{height:22px;border-radius:3px;background:var(--sea2)}
+.months i.now{outline:2px solid var(--acc);outline-offset:1px}
+.ml{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));font-size:11px;color:var(--mut);text-align:center}
+.log{display:grid;gap:10px}
+.entry{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 0;border-top:1px solid var(--line)}
+.entry .meta{color:var(--mut);font-size:14px}
+.hist{display:grid;grid-template-columns:repeat(24,minmax(0,1fr));gap:2px;align-items:end;height:90px;margin-top:8px}
+.hist i{background:var(--sea2);border-radius:3px 3px 0 0;min-height:2px}
+.hl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));font-size:11px;color:var(--mut)}
+.chat{display:grid;gap:10px;margin-bottom:12px}
+.msg{padding:10px 14px;border-radius:14px;max-width:92%;white-space:pre-wrap}
+.msg.u{background:var(--sea);color:var(--foam);justify-self:end}
+.msg.a{background:var(--card);border:1px solid var(--line)}
+.drop{border:2px dashed var(--line);border-radius:16px;padding:18px;text-align:center}
+.drop img{max-width:100%;max-height:260px;border-radius:12px;margin-top:10px}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+nav.tabs a{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:52px;border-radius:12px;color:var(--mut);text-decoration:none;font:600 14px Barlow,sans-serif;gap:2px}
+nav.tabs a svg{width:22px;height:22px}
+nav.tabs a[aria-current=page]{color:var(--acc2);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+section[hidden]{display:none}
+.scroll{overflow-x:auto}
+.legal{width:100%;border-collapse:collapse;font-size:15px}
+.legal td,.legal th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
+.legal td.n{text-align:right;white-space:nowrap}
+@media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal;color:var(--mut)}.stack td:empty{display:none}}
+@media(prefers-reduced-motion:no-preference){.now-line{animation:pulse 2.4s ease-in-out infinite}@keyframes pulse{50%{opacity:.45}}}
+</style>
+<script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script>
+</head>
+<body>
+
+<header class="hero">
+  <div class="scene" id="scene"><svg id="sky" aria-hidden="true"></svg>
+   <div class="wrap scene-in">
+    <div class="top">
+      <h1 class="brand">Rast<span>gele</span></h1>
+      <small id="dateLbl"></small>
+    </div>
+    <div class="chips" id="spotChips" role="group" aria-label="Mera seç"></div>
+    <div class="score">
+      <div class="big num" id="bigScore">–<sup>/100</sup></div>
+      <div class="verdict" id="verdict">Hesaplanıyor…</div>
+    </div>
+    <div class="wxline" id="wxLine"></div>
+   </div>
+  </div>
+  <div class="wrap band" style="padding-top:6px">
+    <div class="fig" id="curveFig"><svg id="curve" role="img" aria-label="Günün av eğrisi"></svg></div>
+    <div class="days" id="days"></div>
+  </div>
+</header>
+
+<main>
+<!-- BUGÜN -->
+<section id="v-bugun" class="band"><div class="wrap">
+  <div id="safety"></div>
+  <a class="card" id="nearTeaser" href="#yakin" style="display:flex;justify-content:space-between;gap:12px;align-items:center;text-decoration:none;color:inherit;margin-bottom:16px"></a>
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <h3>Bu saatte hangi balık?</h3>
+        <p class="lead" id="rankLead">Seçili saat ve merada türlerin aktivite puanı.</p>
+        <div class="rows" id="rank"></div>
+      </div>
+    </div>
+    <div>
+      <div class="card" id="weekCard"><h3>Bu haftanın en iyi çıkışları</h3><div id="week" style="margin-top:8px"></div></div>
+      <div class="card">
+        <h3>Günün saatleri</h3>
+        <div id="windows" style="margin-top:8px"></div>
+        <dl class="kv" id="astro" style="margin-top:12px"></dl>
+      </div>
+      <div class="card">
+        <h3>Deniz ve hava</h3>
+        <div id="wxCard" style="margin-top:8px"></div>
+        <details id="manualBox" style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:center">Elle düzelt (gözünle gördüğün farklıysa)</summary>
+          <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="manualOn" style="width:22px;min-height:22px"> Otomatik yerine benim girdiğimi kullan</label>
+          <div id="conds"></div>
+          <p class="note"><a id="windyLink" href="https://www.windy.com/" target="_blank" rel="noopener">Windy'de rüzgar ve dalgaya bak</a></p>
+        </details>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- YAKINIMDA -->
+<section id="v-yakin" class="band" hidden><div class="wrap">
+  <h2>Yakınındaki en iyi meralar</h2>
+  <p class="lead" id="nearLead">Konumuna, saate, aya ve rüzgarın meraya hangi yönden vurduğuna göre sıralanır.</p>
+  <div class="card" id="locCard">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+      <div><span class="note">Konumun</span><div class="num" style="font-size:26px" id="locName">—</div></div>
+      <button class="btn pri" type="button" id="gpsBtn">Konumumu bul</button>
+    </div>
+    <p class="note" id="gpsMsg"></p>
+    <div class="seg hs" id="towns" role="group" aria-label="İlçe seç"></div>
+    <form id="locForm" style="display:flex;gap:8px"><input id="locIn" placeholder="Google Haritalar linki ya da 36.78, 31.44" aria-label="Konum yapıştır"><button class="btn" type="submit">Ayarla</button></form>
+  </div>
+  <div class="grid2" style="margin-top:16px">
+    <div class="card radar">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Mera radarı</h3><div class="seg" id="radius" style="margin:0"></div></div>
+      <div class="fig" id="radarFig" style="height:360px"><svg id="radar" role="img" aria-label="Etrafındaki meralar ve puanları"></svg></div>
+      <p class="note">Ortada sen varsın; daireler meranın şu anki puanı. Dokununca seçilir.</p>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 id="nearTitle">Şimdi gitmeye değer</h3></div>
+      <div class="seg hs" id="typeF" style="margin-top:8px"></div>
+      <div class="log" id="nearList"></div>
+      <button class="btn ghost" type="button" id="moreBtn" style="margin-top:8px">Hepsini göster</button>
+    </div>
+  </div>
+  <h3 style="margin-top:28px">Kendi meraların</h3>
+  <p class="lead">Üstteki çipler bunlar. Bilinen meraların konumları yaklaşık; “Yol tarifi” Google Haritalar'da adla arar.</p>
+  <div class="grid2">
+    <div class="card"><div class="log" id="spotList"></div></div>
+    <form class="card" id="spotForm">
+      <h3 id="spotFormTitle">Yeni mera ekle</h3>
+      <label for="sName">Ad</label><input id="sName" required maxlength="40" placeholder="Örn. Kumköy mendireği">
+      <label for="sType">Tip</label>
+      <select id="sType"><option value="kayalik">Kayalık</option><option value="kumsal">Kumsal</option><option value="liman">Liman / mendirek</option><option value="nehir">Nehir ağzı</option></select>
+      <label for="sFace">Deniz hangi yönde? (kıyıda denize bakınca)</label>
+      <select id="sFace"><option value="180">Güney</option><option value="225" selected>Güneybatı</option><option value="135">Güneydoğu</option><option value="270">Batı</option><option value="90">Doğu</option><option value="0">Kuzey</option><option value="45">Kuzeydoğu</option><option value="315">Kuzeybatı</option></select>
+      <div class="f2"><div><label for="sLat">Enlem</label><input id="sLat" inputmode="decimal" value="36.74"></div><div><label for="sLng">Boylam</label><input id="sLng" inputmode="decimal" value="31.50"></div></div>
+      <p class="note">Google Haritalar'da noktaya basılı tut, çıkan iki sayıyı kopyala.</p>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn pri" type="submit">Kaydet</button><button class="btn ghost" type="button" id="sCancel" hidden>Vazgeç</button></div>
+    </form>
+  </div>
+</div></section>
+
+<!-- TÜRLER -->
+<section id="v-turler" class="band" hidden><div class="wrap">
+  <h2>Manavgat kıyısının balıkları</h2>
+  <p class="lead">Ay şeridi türün sezonda ne kadar aktif olduğunu gösterir (koyu = iyi dönem, turuncu çerçeve = bu ay). Yasal boylar 6/2 Amatör Tebliği'nden (2024/21, 2028'e kadar geçerli).</p>
+  <div class="alert"><b>Balon balığı (Lagocephalus sceleratus)</b> Antalya kıyısında çok yaygın ve <b>ölümcül zehirli</b> — pişirmek zehri yok etmez. Yakalarsan yeme, kimseye verme; dişleri misinayı keser, dikkatli çıkar.</div>
+  <div class="sp" id="species"></div>
+  <div class="card" style="margin-top:16px">
+    <h3>Kurallar — kısa</h3>
+    <ul>
+      <li>Kg ile sınırlı türlerde, türler karışık da olsa <b>toplam 5 kg</b> götürebilirsin. Tek balık 5 kg'ı geçerse o tek balık yasal sayılır.</li>
+      <li>En büyük balığı ayırınca kalanlar <b>4 kg'ı geçmemeli</b>.</li>
+      <li><b>Orfoz</b> ve köpekbalıklarının çoğu, vatoz/keler türleri, yılan balığı, deniz kaplumbağaları: avlamak tamamen yasak.</li>
+      <li>Avlanma amaçlı ışık kullanmak yasak. Yemlik balık en fazla 12 cm.</li>
+    </ul>
+    <p class="note">Kaynak: Antalya İl Tarım ve Orman Müdürlüğü yasal limitler posteri (2024–2028). Değişiklikler için Resmî Gazete'yi kontrol et.</p>
+  </div>
+</div></section>
+
+<!-- DEFTER -->
+<section id="v-defter" class="band" hidden><div class="wrap">
+  <h2>Av defteri</h2>
+  <p class="lead" id="logLead">Her avı kaydet; uygulama o anki ay, saat ve puanı otomatik ekler. Zamanla senin meran için gerçekten neyin işe yaradığı ortaya çıkar.</p>
+  <div class="grid2">
+    <form class="card" id="catchForm">
+      <h3>Av ekle</h3>
+      <div class="f2">
+        <div><label for="cSp">Tür</label><select id="cSp"></select></div>
+        <div><label for="cSpot">Mera</label><select id="cSpot"></select></div>
+      </div>
+      <div class="f3">
+        <div><label for="cLen">Boy (cm)</label><input id="cLen" inputmode="decimal" placeholder="28"></div>
+        <div><label for="cKg">Ağırlık (kg)</label><input id="cKg" inputmode="decimal" placeholder="0,4"></div>
+        <div><label for="cMeth">Yöntem</label><select id="cMeth"><option>Spin</option><option>Dip</option><option>Şamandıra</option><option>Çapari</option></select></div>
+      </div>
+      <div class="f2">
+        <div><label for="cBait">Yem / sahte</label><input id="cBait" maxlength="60" placeholder="Silikon 10 cm beyaz"></div>
+        <div><label for="cTime">Tarih ve saat</label><input id="cTime" type="datetime-local"></div>
+      </div>
+      <label for="cNote">Not</label><input id="cNote" maxlength="120" placeholder="Köpüklü su, akıntı soldan">
+      <div id="legalMsg" class="note" style="margin-top:8px"></div>
+      <button class="btn pri" type="submit" style="margin-top:12px">Deftere yaz</button>
+      <p class="note" id="syncNote"></p>
+    </form>
+    <div>
+      <div class="card" id="todayKg"></div>
+      <div class="card">
+        <h3>Sende ne çalışıyor?</h3>
+        <div id="stats"><p class="note">İlk avını ekleyince istatistikler burada çıkar.</p></div>
+        <button class="btn" id="analyzeBtn" type="button" style="margin-top:12px">Defterimi Claude yorumlasın</button>
+        <div id="analyzeOut" class="note" style="white-space:pre-wrap;margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>Kayıtlar</h3><div class="log" id="logList"></div><div style="margin-top:10px"><button class="btn ghost" id="copyLog" type="button">Defteri kopyala</button> <span class="note" id="copyMsg"></span></div></div>
+</div></section>
+
+<!-- SOR -->
+<section id="v-sor" class="band" hidden><div class="wrap">
+  <div class="grid2">
+    <div class="card">
+      <h3>Bu ne balığı?</h3>
+      <p class="lead">Fotoğrafını yükle; türü, yasal boyunu ve yenip yenmeyeceğini söyleyeyim. Boy tahmini için yanına bilinen bir şey koy (çakmak 8 cm, sigara paketi 9 cm).</p>
+      <div class="drop">
+        <input type="file" id="fishImg" accept="image/*" aria-label="Balık fotoğrafı">
+        <img id="fishPrev" alt="" hidden>
+      </div>
+      <button class="btn pri" id="idBtn" type="button" style="margin-top:12px" disabled>Tanımla</button>
+      <div id="idOut" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <h3>Usta'ya sor</h3>
+      <p class="lead">Seçili mera, bugünün ayı, saatleri ve girdiğin deniz durumu sorunla birlikte gider.</p>
+      <div class="chat" id="chat"></div>
+      <div class="seg" id="quickQ"></div>
+      <form id="askForm" style="display:flex;gap:8px"><input id="askIn" placeholder="Bu akşam Evrenseki'de ne atayım?" maxlength="300"><button class="btn pri" type="submit">Sor</button></form>
+      <p class="note" id="aiNote"></p>
+    </div>
+  </div>
+</div></section>
+</main>
+
+<nav class="tabs" aria-label="Bölümler">
+  <a href="#bugun" data-v="bugun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 16c3-4 5-4 8 0s5 4 8 0 3-2 4-1"/><circle cx="12" cy="7" r="3"/></svg>Bugün</a>
+  <a href="#yakin" data-v="yakin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-7 7-12a7 7 0 1 0-14 0c0 5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>Yakınımda</a>
+  <a href="#turler" data-v="turler"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12c4-6 11-6 15 0-4 6-11 6-15 0z"/><path d="M18 12l4-4v8z"/></svg>Türler</a>
+  <a href="#defter" data-v="defter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Defter</a>
+  <a href="#sor" data-v="sor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H9l-5 4z"/></svg>Sor</a>
+</nav>
+
+<script>
+{
+/* ---------- Astronomi (SunCalc formülleri) ---------- */
+const PI=Math.PI,sin=Math.sin,cos=Math.cos,tan=Math.tan,asin=Math.asin,atan=Math.atan2,acos=Math.acos,rad=PI/180;
+const dayMs=864e5,J1970=2440588,J2000=2451545,e=rad*23.4397;
+const toDays=d=>d/dayMs-0.5+J1970-J2000;
+const ra=(l,b)=>atan(sin(l)*cos(e)-tan(b)*sin(e),cos(l));
+const decl=(l,b)=>asin(sin(b)*cos(e)+cos(b)*sin(e)*sin(l));
+const alt=(H,phi,dec)=>asin(sin(phi)*sin(dec)+cos(phi)*cos(dec)*cos(H));
+const sid=(d,lw)=>rad*(280.16+360.9856235*d)-lw;
+const sunC=d=>{const M=rad*(357.5291+0.98560028*d);const L=M+rad*(1.9148*sin(M)+0.02*sin(2*M)+0.0003*sin(3*M))+rad*102.9372+PI;return{dec:decl(L,0),ra:ra(L,0)}};
+const moonC=d=>{const L=rad*(218.316+13.176396*d),M=rad*(134.963+13.064993*d),F=rad*(93.272+13.229350*d);const l=L+rad*6.289*sin(M),b=rad*5.128*sin(F);return{ra:ra(l,b),dec:decl(l,b),dist:385001-20905*cos(M)}};
+const sunAlt=(t,lat,lng)=>{const d=toDays(t),c=sunC(d);return alt(sid(d,-rad*lng)-c.ra,rad*lat,c.dec)/rad};
+const moonAlt=(t,lat,lng)=>{const d=toDays(t),c=moonC(d);return alt(sid(d,-rad*lng)-c.ra,rad*lat,c.dec)/rad};
+const azi=(H,phi,dec)=>atan(sin(H),cos(H)*sin(phi)-tan(dec)*cos(phi));
+const bodyPos=(t,lat,lng,moon)=>{const d=toDays(t),c=moon?moonC(d):sunC(d),H=sid(d,-rad*lng)-c.ra;return{alt:alt(H,rad*lat,c.dec)/rad,az:azi(H,rad*lat,c.dec)/rad}};
+const moonIllum=t=>{const d=toDays(t),s=sunC(d),m=moonC(d),sd=149598000;
+  const ph=acos(sin(s.dec)*sin(m.dec)+cos(s.dec)*cos(m.dec)*cos(s.ra-m.ra));
+  const inc=atan(sd*sin(ph),m.dist-sd*cos(ph));
+  const ang=atan(cos(s.dec)*sin(s.ra-m.ra),sin(s.dec)*cos(m.dec)-cos(s.dec)*sin(m.dec)*cos(s.ra-m.ra));
+  return{f:(1+cos(inc))/2,phase:0.5+0.5*inc*(ang<0?-1:1)/PI}};
+
+/* Bir günün olayları: güneş doğ/bat, ay doğ/bat, ay üst/alt geçiş */
+const STEP=5*60e3;
+function dayEvents(day0,lat,lng){
+  const ev={sunrise:null,sunset:null,dawn:null,dusk:null,moon:[]};
+  const a=day0-3*3600e3,b=day0+27*3600e3;
+  let ps=sunAlt(a,lat,lng),pm=moonAlt(a,lat,lng),pm2=moonAlt(a-STEP,lat,lng);
+  for(let t=a+STEP;t<=b;t+=STEP){
+    const s=sunAlt(t,lat,lng),m=moonAlt(t,lat,lng);
+    const inDay=t>=day0&&t<day0+dayMs;
+    if(inDay){
+      if(ps< -0.833&&s>=-0.833)ev.sunrise=t-STEP*(s+0.833)/(s-ps);
+      if(ps>=-0.833&&s< -0.833)ev.sunset=t-STEP*(s+0.833)/(s-ps);
+      if(ps< -6&&s>=-6)ev.dawn=t;if(ps>=-6&&s< -6)ev.dusk=t;
+    }
+    if(pm<0.133&&m>=0.133)ev.moon.push({k:'rise',t:t-STEP*(m-0.133)/(m-pm)});
+    if(pm>=0.133&&m<0.133)ev.moon.push({k:'set',t:t-STEP*(m-0.133)/(m-pm)});
+    if(pm>pm2&&pm>=m)ev.moon.push({k:'up',t:t-STEP});
+    if(pm<pm2&&pm<=m)ev.moon.push({k:'down',t:t-STEP});
+    ps=s;pm2=pm;pm=m;
+  }
+  return ev;
+}
+
+/* ---------- Veri ---------- */
+const MON=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+const TYPES={kayalik:'Kayalık',kumsal:'Kumsal',liman:'Liman / mendirek',nehir:'Nehir ağzı'};
+/* m: aylık sezon uyumu, h: mera tipi uyumu, tw/day/night: zaman tercihi, foam/murk: köpük ve bulanık suya tepki */
+const SP=[
+ {id:'levrek',n:'Levrek',lat:'Dicentrarchus labrax',min:25,lim:'kg',m:[1,.9,.8,.6,.4,.3,.3,.3,.5,.8,1,1],h:{kayalik:.85,kumsal:.8,liman:.8,nehir:1},tw:1,day:.25,night:.65,foam:.14,murk:.08,how:'Spin: 9–12 cm silikon shad veya minnow, köpüklü suda yavaş sarım. Dip: canlı karides, sardalya fileto.'},
+ {id:'cipura',n:'Çipura',lat:'Sparus aurata',min:20,lim:'kg',m:[.7,.6,.6,.6,.6,.7,.8,.9,1,1,1,.85],h:{kayalik:.9,kumsal:.7,liman:.9,nehir:.75},tw:.7,day:.6,night:.75,foam:0,murk:-.04,how:'Dip: yengeç, midye, sülünez, karides. Uzun köstek, ince misina; vuruşu bekle, hemen tepme.'},
+ {id:'sargoz',n:'Sargoz',lat:'Diplodus sargus',min:21,lim:'kg',m:[1,1,.9,.7,.5,.4,.4,.5,.6,.8,1,1],h:{kayalik:1,kumsal:.3,liman:.8,nehir:.4},tw:.85,day:.3,night:.9,foam:.12,murk:.03,how:'Kayalık dibi: karides, midye, sardalya macunu. Dalga kayaya vururken, köpüğün kenarına at.'},
+ {id:'karagoz',n:'Karagöz',lat:'Diplodus vulgaris',min:18,lim:'kg',m:[.9,.9,.8,.7,.6,.6,.6,.6,.7,.8,.9,.9],h:{kayalik:1,kumsal:.3,liman:.9,nehir:.4},tw:.8,day:.4,night:.85,foam:.06,murk:0,how:'Küçük iğne (8–10 no), karides veya sülünez, kaya diplerinde.'},
+ {id:'lufer',n:'Lüfer / Sarıkanat',lat:'Pomatomus saltatrix',min:18,lim:'kg',m:[.6,.4,.3,.2,.2,.2,.3,.4,.7,1,1,.9],h:{kayalik:.7,kumsal:.8,liman:.9,nehir:.9},tw:1,day:.3,night:.3,foam:.05,murk:-.03,how:'Spin: 20–30 g kaşık, hızlı sarım; çelik tel köstek kullan. Sürü görünce hemen at.'},
+ {id:'akya',n:'Akya',lat:'Lichia amia',min:40,lim:'1 adet',ban:[[4,15],[5,15]],m:[.2,.2,.3,.6,.7,.8,.7,.7,.8,.9,.8,.4],h:{kayalik:.6,kumsal:.7,liman:.85,nehir:.95},tw:1,day:.35,night:.3,foam:.04,murk:0,how:'Yüzey sahteleri (stickbait), canlı küçük kefal (yemlik ≤12 cm). Güçlü takım, fren ayarlı.'},
+ {id:'kefal',n:'Kefal',lat:'Mugil cephalus / Chelon auratus',min:30,lim:'kg',m:[.8,.8,.8,.8,.8,.8,.8,.8,.8,.85,.85,.8],h:{kayalik:.5,kumsal:.5,liman:.9,nehir:1},tw:.6,day:.85,night:.2,foam:-.05,murk:.1,how:'Şamandıra + ekmek hamuru, küçük iğne. Yağmurdan sonra nehir ağzı çok verir.'},
+ {id:'mirmir',n:'Mırmır',lat:'Lithognathus mormyrus',min:0,lim:'kg',m:[.3,.3,.3,.4,.6,.9,1,1,.8,.5,.4,.3],h:{kayalik:.3,kumsal:1,liman:.5,nehir:.6},tw:.8,day:.2,night:1,foam:.05,murk:.03,how:'Kumsalda gece dip: sülünez, mamun. Dalga kırılan çizgiye at.'},
+ {id:'istavrit',n:'İstavrit',lat:'Trachurus spp.',min:13,lim:'kg',m:[.75,.65,.5,.4,.4,.4,.5,.6,.75,.9,.9,.85],h:{kayalik:.5,kumsal:.4,liman:.85,nehir:.6},tw:.8,day:.4,night:.55,foam:-.03,murk:-.03,how:'Çapari, mendirek ucu. Akşamüstü sürü gelir.'},
+ {id:'barakuda',n:'Barakuda',lat:'Sphyraena spp.',min:0,lim:'kg',m:[.4,.3,.3,.4,.5,.6,.7,.8,.9,1,.9,.6],h:{kayalik:.8,kumsal:.5,liman:.9,nehir:.6},tw:.95,day:.35,night:.35,foam:0,murk:-.05,how:'Spin: ince uzun minnow, gün batımı. Dişli; tel köstek şart.'},
+ {id:'kaya',n:'Kaya balığı',lat:'Gobiidae',min:0,lim:'kg',m:[.8,.8,.8,.8,.8,.8,.8,.8,.8,.8,.8,.8],h:{kayalik:1,kumsal:.2,liman:.8,nehir:.4},tw:.6,day:.7,night:.4,foam:0,murk:0,how:'Kaya aralarına küçük iğne, karides parçası. Kolay ama büyük balık değil.'}
+];
+const DEF_SPOTS=[
+ {id:'evrenseki',n:'Evrenseki liman ağzı',t:'liman',lat:36.729,lng:31.566,f:200,q:'Evrenseki Balıkçı Barınağı Manavgat'},
+ {id:'kayalik',n:'Benim kayalık',t:'kayalik',lat:36.745,lng:31.52,f:200},
+ {id:'bogaz',n:'Manavgat ırmak ağzı',t:'nehir',lat:36.734,lng:31.494,f:190,q:'Manavgat Boğazı Kleopatra Plajı'},
+ {id:'side',n:'Side antik liman',t:'kayalik',lat:36.767,lng:31.388,f:225,q:'Side Antik Liman'},
+ {id:'kumsal',n:'Titreyengöl kumsalı',t:'kumsal',lat:36.755,lng:31.438,f:200,q:'Titreyengöl Plajı Side'}
+];
+/* Bilinen kıyı meraları (Antalya kıyısı). Konumlar yaklaşık; f = kıyıdan denize bakış yönü (derece) */
+const MERA=[
+ {id:'bogaz',n:'Manavgat ırmak ağzı (Boğaz)',a:'Manavgat',t:'nehir',lat:36.734,lng:31.494,f:190,q:'Manavgat Boğazı Kleopatra Plajı',note:'Mendirek üstü ve çevresi; levrek ve lüfer için bölgenin en bilinen yeri. Yağmurdan sonra bulanık suda levrek.'},
+ {id:'evrenseki',n:'Evrenseki balıkçı barınağı',a:'Manavgat',t:'liman',lat:36.729,lng:31.566,f:200,q:'Evrenseki Balıkçı Barınağı Manavgat',note:'Mendirek ucu at-çek ve dip; liman içi sert havada korunaklı.'},
+ {id:'kizilot',n:'Kızılot balıkçı barınağı',a:'Manavgat',t:'liman',lat:36.714,lng:31.617,f:200,q:'Kızılot Balıkçı Barınağı',note:'Mendirek; akşamüstü istavrit ve çipura, gece dip.'},
+ {id:'side',n:'Side antik liman kayalıkları',a:'Side',t:'kayalik',lat:36.767,lng:31.388,f:225,q:'Side Antik Liman',note:'Kayalık burun; sargoz, karagöz, gün batımında levrek ve barakuda.'},
+ {id:'sideapollon',n:'Side Apollon Tapınağı önü',a:'Side',t:'kayalik',lat:36.765,lng:31.391,f:190,q:'Apollon Tapınağı Side',note:'Kaya dibi; dalgalı havada sargoz.'},
+ {id:'sorgun',n:'Sorgun sahili',a:'Manavgat',t:'kumsal',lat:36.761,lng:31.414,f:200,q:'Sorgun Plajı Manavgat',note:'Kumsal; gece mırmır, sabah levrek.'},
+ {id:'kumsal',n:'Titreyengöl kumsalı',a:'Manavgat',t:'kumsal',lat:36.755,lng:31.438,f:200,q:'Titreyengöl Plajı Side',note:'Uzun kumsal; surf-casting, mırmır, çipura.'},
+ {id:'kumkoy',n:'Kumköy sahili',a:'Side',t:'kumsal',lat:36.776,lng:31.371,f:220,q:'Kumköy Plajı Side',note:'Kumsal; kaplumbağa yuvalama alanı, yaz gecesi dikkat.'},
+ {id:'colakli',n:'Çolaklı sahili',a:'Manavgat',t:'kumsal',lat:36.800,lng:31.300,f:210,q:'Çolaklı Plajı',note:'Kumsal; mırmır ve levrek, yerel kıyı avcılarının bölgesi.'},
+ {id:'gundogdu',n:'Gündoğdu sahili',a:'Manavgat',t:'kumsal',lat:36.811,lng:31.245,f:205,q:'Gündoğdu Plajı Manavgat',note:'Sakin kumsal; gece dip.'},
+ {id:'kopru',n:'Köprüçay ağzı (Boğazkent)',a:'Serik',t:'nehir',lat:36.835,lng:31.178,f:200,q:'Köprüçay Boğazkent',note:'Nehir ağzı; levrek, kefal, akya.'},
+ {id:'acisu',n:'Acısu ağzı (Belek)',a:'Serik',t:'nehir',lat:36.846,lng:31.075,f:200,q:'Acısu Belek',note:'Dere ağzı; kefal ve levrek.'},
+ {id:'aksu',n:'Aksu çayı ağzı',a:'Aksu',t:'nehir',lat:36.852,lng:30.905,f:190,q:'Aksu Çayı denize döküldüğü yer',note:'Nehir ağzı; levrek, kefal.'},
+ {id:'lara',n:'Lara / Kundu sahili',a:'Muratpaşa',t:'kumsal',lat:36.854,lng:30.845,f:180,q:'Lara Plajı Antalya',note:'Kumsal; mırmır, sargoz, akşam levrek.'},
+ {id:'larafalez',n:'Lara falezleri (Düden)',a:'Muratpaşa',t:'kayalik',lat:36.852,lng:30.783,f:180,q:'Düden Şelalesi Lara',note:'Yüksek falez; dalgalı havada çok dikkat.'},
+ {id:'antliman',n:'Kaleiçi yat limanı mendireği',a:'Muratpaşa',t:'liman',lat:36.884,lng:30.703,f:200,q:'Kaleiçi Yat Limanı',note:'Liman; çipura, istavrit, levrek.'},
+ {id:'bogacay',n:'Boğaçay ağzı (Konyaaltı batı)',a:'Konyaaltı',t:'nehir',lat:36.857,lng:30.612,f:150,q:'Boğaçay Konyaaltı',note:'Kefalin bol olduğu ağız; levrek de gelir.'},
+ {id:'konyaalti',n:'Konyaaltı sahili batı ucu',a:'Konyaaltı',t:'kumsal',lat:36.850,lng:30.598,f:140,q:'Konyaaltı Plajı batı',note:'Çakıllı kumsal; levrek, barakuda, mırmır.'},
+ {id:'sarisu',n:'Sarısu balıkçı barınağı',a:'Konyaaltı',t:'liman',lat:36.836,lng:30.598,f:120,q:'Antalya Balıkçı Barınağı Sarısu',note:'Büyük barınak; mendirek dışı at-çek.'},
+ {id:'caltican',n:'Büyük Çaltıcak kayalıkları',a:'Konyaaltı',t:'kayalik',lat:36.826,lng:30.588,f:110,q:'Büyük Çaltıcak Plajı',note:'Kayalık; sargoz ve karagöz.'},
+ {id:'kemer',n:'Kemer marina mendireği',a:'Kemer',t:'liman',lat:36.601,lng:30.565,f:90,q:'Kemer Marina',note:'Mendirek; çipura, istavrit.'},
+ {id:'phaselis',n:'Phaselis koyları',a:'Kemer',t:'kayalik',lat:36.524,lng:30.552,f:110,q:'Phaselis Antik Kenti',note:'Kayalık koylar; ören yeri saatlerine dikkat.'},
+ {id:'okurcalar',n:'Okurcalar kayalıkları',a:'Alanya',t:'kayalik',lat:36.662,lng:31.700,f:200,q:'Okurcalar sahil',note:'Kaya ve kum karışık; sargoz, levrek.'},
+ {id:'incekum',n:'İncekum / Avsallar',a:'Alanya',t:'kumsal',lat:36.622,lng:31.758,f:210,q:'İncekum Plajı Alanya',note:'Kumsal ve kaya uçları; at-çek.'},
+ {id:'payallar',n:'Payallar mevkii',a:'Alanya',t:'kayalik',lat:36.612,lng:31.778,f:210,q:'Payallar Alanya',note:'At-çekle levrek bilinen yer.'},
+ {id:'damlatas',n:'Damlataş / Kale arkası kayalıkları',a:'Alanya',t:'kayalik',lat:36.541,lng:31.992,f:240,q:'Damlataş Mağarası Alanya',note:'Kalenin arkası; levrek ve barakuda, oltacıların gözdesi.'},
+ {id:'alanyaliman',n:'Alanya limanı mendireği',a:'Alanya',t:'liman',lat:36.538,lng:32.003,f:160,q:'Alanya Limanı',note:'Liman; çipura, istavrit.'},
+ {id:'dim',n:'Dim Çayı ağzı',a:'Alanya',t:'nehir',lat:36.523,lng:32.098,f:200,q:'Dim Çayı denize döküldüğü yer Alanya',note:'Büyük levreğin toplandığı delta (ilkbahar–sonbahar).'},
+ {id:'gazipasa',n:'Gazipaşa limanı',a:'Gazipaşa',t:'liman',lat:36.266,lng:32.298,f:200,q:'Gazipaşa Limanı',note:'Mendirek; çipura, sargoz.'},
+ {id:'finike',n:'Finike limanı',a:'Finike',t:'liman',lat:36.297,lng:30.148,f:150,q:'Finike Marina',note:'Mendirek; çipura, levrek.'},
+ {id:'kas',n:'Kaş limanı',a:'Kaş',t:'liman',lat:36.199,lng:29.638,f:200,q:'Kaş Limanı',note:'Derin su yakın; büyük çipura, sinarit.'}
+];
+const TOWNS=[['Manavgat',36.786,31.443],['Side',36.767,31.390],['Evrenseki',36.738,31.560],['Kızılot',36.717,31.610],['Çolaklı',36.800,31.300],['Belek',36.860,31.055],['Antalya',36.887,30.703],['Konyaaltı',36.865,30.640],['Kemer',36.600,30.560],['Okurcalar',36.665,31.700],['Alanya',36.544,31.999],['Gazipaşa',36.270,32.316]];
+const WIND={yildiz:['Yıldız (K)',0],poyraz:['Poyraz (KD)',45],gundogusu:['Gündoğusu (D)',90],kesisleme:['Keşişleme (GD)',135],kible:['Kıble (G)',180],lodos:['Lodos (GB)',225],gunbatisi:['Günbatısı (B)',270],karayel:['Karayel (KB)',315]};
+const COND=[
+ {k:'p',l:'Basınç',o:[['dus','Düşüyor'],['sabit','Sabit'],['yuk','Yükseliyor']]},
+ {k:'d',l:'Rüzgar nereden esiyor?',o:[['?','Bilmiyorum']].concat(Object.entries(WIND).map(([k,v])=>[k,v[0]]))},
+ {k:'w',l:'Rüzgar gücü',o:[['sakin','Sakin (<10 km/s)'],['orta','Orta (10–25)'],['sert','Sert (25–40)'],['firtina','Fırtına (40+)']]},
+ {k:'s',l:'Deniz',o:[['carsaf','Çarşaf'],['hafif','Hafif dalga'],['kopuk','Köpüklü'],['sert','Sert dalga']]},
+ {k:'c',l:'Su',o:[['berrak','Berrak'],['hafif','Hafif bulanık'],['camur','Çamurlu']]}
+];
+
+/* ---------- Otomatik hava (MET Norway, arka planda güncellenir) ---------- */
+let WX={"manavgat":{"n":"Manavgat\u2013Side","lat":36.73,"lng":31.5,"upd":"2026-11-27T09:20:00Z","src":"MET Norway (api.met.no)","h":[[1795773600000,1019.5,6.8,256,19.9,11,0.0],[1795777200000,1019.0,10.1,256,20.2,16,0.0],[1795780800000,1018.8,11.9,256,20.1,43,0.0],[1795784400000,1018.8,11.2,261,19.7,74,0.0],[1795788000000,1018.6,9.0,293,17.9,14,0.0],[1795791600000,1018.5,6.8,11,15.2,82,0.0],[1795795200000,1018.6,6.8,32,14.1,83,0.0],[1795798800000,1018.7,7.9,35,12.7,98,0.0],[1795802400000,1018.6,8.6,32,12.8,99,0.0],[1795806000000,1018.5,9.0,33,12.8,98,0.0],[1795809600000,1018.7,8.3,39,12.2,98,0.0],[1795813200000,1018.8,7.9,42,11.0,91,0.0],[1795816800000,1018.6,7.9,42,9.9,80,0.0],[1795820400000,1018.2,8.6,41,9.3,94,0.0],[1795824000000,1017.9,8.3,41,8.9,99,0.0],[1795827600000,1017.7,7.2,41,8.7,100,0.0],[1795831200000,1017.5,7.2,40,8.9,98,0.0],[1795834800000,1017.0,7.6,39,8.7,97,0.0],[1795838400000,1016.8,7.9,38,8.5,99,0.0],[1795842000000,1016.9,7.9,37,8.6,99,0.0],[1795845600000,1017.3,7.9,38,10.9,100,0.0],[1795849200000,1017.3,8.3,40,14.6,100,0.0],[1795852800000,1017.2,6.1,33,17.7,100,0.0],[1795856400000,1016.8,5.0,333,19.4,100,0.0],[1795860000000,1016.0,6.8,301,19.9,98,0.0],[1795863600000,1015.2,9.0,303,20.2,94,0.0],[1795867200000,1014.9,10.4,300,20.2,91,0.0],[1795870800000,1014.4,10.8,325,19.4,66,0.0],[1795874400000,1013.9,10.1,334,17.6,71,0.0],[1795878000000,1013.9,10.4,355,15.5,94,0.0],[1795881600000,1014.0,11.5,7,15.0,99,0.0],[1795885200000,1013.7,11.9,10,14.8,99,0.0],[1795888800000,1013.5,11.5,13,14.1,100,0.0],[1795892400000,1013.4,10.8,27,13.1,100,0.0],[1795896000000,1013.4,10.8,36,12.1,100,0.0],[1795899600000,1013.1,10.1,39,11.4,100,0.0],[1795903200000,1012.8,9.4,38,11.5,100,0.0],[1795906800000,1012.3,9.0,39,11.7,98,0.0],[1795910400000,1012.1,9.0,37,11.5,98,0.0],[1795914000000,1011.8,9.4,35,11.4,98,0.0],[1795917600000,1011.4,9.4,39,11.4,97,0.0],[1795921200000,1011.4,9.4,40,10.5,98,0.0],[1795924800000,1011.5,10.4,37,10.3,90,0.0],[1795928400000,1011.4,10.4,40,10.5,9,0.0],[1795932000000,1011.7,9.7,43,12.3,10,0.0],[1795935600000,1012.1,8.3,37,17.4,9,0.0],[1795939200000,1012.2,8.6,322,20.1,0,0.0],[1795942800000,1012.2,9.0,274,20.9,0,0.0],[1795946400000,1011.8,10.8,275,21.3,0,0.0],[1795950000000,1011.4,12.6,275,21.4,0,0.0],[1795953600000,1011.2,13.7,278,21.1,1,0.0],[1795957200000,1011.3,14.4,277,20.2,2,0.0],[1795960800000,1011.7,15.1,278,18.5,3,0.0],[1795964400000,1012.1,12.2,326,16.1,4,0.0],[1795968000000,1012.4,9.7,14,15.5,12,0.0],[1795971600000,1012.8,7.9,35,14.7,9,0.0],[1795975200000,1012.9,7.9,41,13.7,12,0.0],[1795978800000,1013.0,7.6,36,13.0,20,0.0],[1795982400000,1013.2,8.3,40,12.8,46,0.0],[1795986000000,1013.2,8.6,37,12.0,44,0.0],[1795989600000,1013.1,7.9,42,11.4,30,0.0],[1795993200000,1012.8,7.6,44,10.4,34,0.0],[1795996800000,1012.6,8.6,47,9.8,35,0.0],[1796018400000,1013.9,10.1,39,11.7,54,0.0],[1796040000000,1011.6,13.7,356,19.4,98,0.0],[1796061600000,1012.6,25.2,41,14.1,25,0.0],[1796083200000,1012.2,11.2,28,12.0,15,0.0],[1796104800000,1012.1,18.0,27,13.0,84,0.3],[1796126400000,1011.0,23.4,32,14.3,68,0.2],[1796148000000,1012.1,32.8,32,10.6,64,0.0],[1796169600000,1012.1,32.0,31,8.6,40,0.0],[1796191200000,1013.7,22.7,33,8.9,29,0.0],[1796212800000,1013.7,17.3,30,14.3,1,0.0],[1796234400000,1015.9,14.0,36,6.7,22,0.0],[1796256000000,1016.0,11.9,35,5.4,20,0.4],[1796277600000,1014.9,11.5,48,8.3,38,5.2],[1796299200000,1013.0,6.5,180,13.2,80,6.2],[1796320800000,1014.0,12.2,66,8.7,39,0.3],[1796342400000,1014.1,9.4,334,6.6,28,0.0]]},"antalya":{"n":"Antalya","lat":36.87,"lng":30.71,"upd":"2026-11-27T09:20:00Z","src":"MET Norway (api.met.no)","h":[[1795773600000,1019.6,3.6,246,20.3,44,0.0],[1795777200000,1019.1,4.3,200,20.6,77,0.0],[1795780800000,1018.9,6.5,199,20.4,87,0.0],[1795784400000,1018.8,6.1,198,19.9,43,0.0],[1795788000000,1018.7,4.7,212,19.0,83,0.0],[1795791600000,1018.6,3.6,266,17.6,90,0.0],[1795795200000,1018.7,4.7,304,16.5,96,0.0],[1795798800000,1018.8,6.5,327,15.3,94,0.0],[1795802400000,1018.8,7.9,332,14.4,97,0.0],[1795806000000,1018.7,9.4,336,14.1,94,0.0],[1795809600000,1018.8,9.4,331,13.2,80,0.0],[1795813200000,1018.9,9.4,328,12.1,66,0.0],[1795816800000,1018.7,9.7,332,11.3,80,0.0],[1795820400000,1018.4,10.8,335,10.7,82,0.0],[1795824000000,1018.2,11.9,332,10.3,80,0.0],[1795827600000,1018.0,12.2,327,10.0,91,0.0],[1795831200000,1017.7,12.2,329,10.0,90,0.0],[1795834800000,1017.2,13.0,329,10.0,97,0.0],[1795838400000,1017.2,13.0,326,10.3,96,0.0],[1795842000000,1017.2,13.3,330,10.2,100,0.0],[1795845600000,1017.5,13.3,332,12.0,100,0.0],[1795849200000,1017.5,13.0,336,14.8,98,0.0],[1795852800000,1017.5,10.8,337,18.0,99,0.0],[1795856400000,1017.1,10.8,341,19.4,96,0.0],[1795860000000,1016.2,9.0,349,20.1,98,0.0],[1795863600000,1015.4,6.1,358,20.4,96,0.0],[1795867200000,1015.0,4.3,284,20.4,94,0.0],[1795870800000,1014.5,6.1,325,20.1,78,0.0],[1795874400000,1014.3,6.5,312,19.4,23,0.0],[1795878000000,1014.2,7.6,314,17.8,23,0.0],[1795881600000,1014.3,10.4,320,16.6,94,0.0],[1795885200000,1014.2,11.9,325,15.5,92,0.0],[1795888800000,1014.1,11.9,318,14.2,98,0.0],[1795892400000,1013.8,12.2,320,13.1,99,0.0],[1795896000000,1013.7,12.2,321,12.5,98,0.0],[1795899600000,1013.5,13.3,328,12.0,99,0.0],[1795903200000,1013.2,14.8,330,12.1,89,0.0],[1795906800000,1012.7,15.1,334,12.5,92,0.0],[1795910400000,1012.6,15.5,337,12.8,81,0.0],[1795914000000,1012.4,15.5,337,12.8,63,0.0],[1795917600000,1012.0,16.9,338,12.5,65,0.0],[1795921200000,1012.0,16.6,338,12.3,85,0.0],[1795924800000,1012.0,17.3,335,12.3,77,0.0],[1795928400000,1012.0,17.6,333,12.2,83,0.0],[1795932000000,1012.2,16.2,335,13.7,88,0.0],[1795935600000,1012.6,15.1,338,16.3,69,0.0],[1795939200000,1012.6,14.0,336,18.9,43,0.0],[1795942800000,1012.3,8.3,323,20.6,15,0.0],[1795946400000,1011.9,9.0,206,21.2,5,0.0],[1795950000000,1011.5,18.7,194,21.2,4,0.0],[1795953600000,1011.3,22.3,194,21.1,2,0.0],[1795957200000,1011.4,24.1,197,20.6,6,0.0],[1795960800000,1011.5,20.5,192,19.9,5,0.0],[1795964400000,1011.9,17.3,185,18.8,2,0.0],[1795968000000,1012.3,14.4,310,17.9,2,0.0],[1795971600000,1012.6,12.6,341,16.4,2,0.0],[1795975200000,1012.7,9.7,343,15.0,6,0.0],[1795978800000,1013.1,8.3,341,14.1,21,0.0],[1795982400000,1013.3,8.3,341,13.3,59,0.0],[1795986000000,1013.3,9.4,339,12.9,59,0.0],[1795989600000,1013.3,10.1,333,12.7,62,0.0],[1795993200000,1013.0,10.4,337,12.5,57,0.0],[1795996800000,1012.8,10.1,328,12.3,60,0.0],[1796018400000,1014.1,9.4,334,13.2,100,0.0],[1796040000000,1011.9,8.6,9,20.1,80,0.0],[1796061600000,1013.3,16.6,342,15.9,67,0.0],[1796083200000,1013.2,19.4,340,13.5,23,0.0],[1796104800000,1013.1,21.6,337,12.8,10,0.4],[1796126400000,1011.5,18.4,360,17.1,62,1.0],[1796148000000,1014.0,25.9,333,12.4,32,0.0],[1796169600000,1014.6,28.8,325,9.9,3,0.0],[1796191200000,1016.1,29.9,323,9.3,4,0.0],[1796212800000,1014.3,23.0,347,14.6,0,0.0],[1796234400000,1016.4,15.8,330,10.0,47,0.0],[1796256000000,1016.3,12.2,343,8.3,67,0.0],[1796277600000,1015.0,11.9,334,8.9,47,0.0],[1796299200000,1013.3,11.9,346,13.1,74,0.0],[1796320800000,1015.0,23.0,327,9.2,37,0.0],[1796342400000,1015.8,27.4,329,7.5,12,0.0]]},"alanya":{"n":"Alanya","lat":36.54,"lng":32.0,"upd":"2026-11-27T09:20:00Z","src":"MET Norway (api.met.no)","h":[[1795773600000,1019.5,10.4,285,18.8,2,0.0],[1795777200000,1019.1,12.2,284,19.0,7,0.0],[1795780800000,1018.9,13.7,284,19.1,9,0.0],[1795784400000,1018.9,13.3,296,19.1,31,0.0],[1795788000000,1018.6,12.2,299,19.0,21,0.0],[1795791600000,1018.4,12.2,318,18.7,76,0.0],[1795795200000,1018.5,12.2,349,18.1,96,0.0],[1795798800000,1018.6,10.8,14,17.8,96,0.0],[1795802400000,1018.6,10.1,29,17.9,100,0.0],[1795806000000,1018.5,9.7,31,18.0,99,0.0],[1795809600000,1018.6,9.7,14,18.1,99,0.0],[1795813200000,1018.7,10.4,8,18.1,100,0.0],[1795816800000,1018.4,11.2,12,17.9,99,0.0],[1795820400000,1018.0,11.2,16,18.0,98,0.0],[1795824000000,1017.7,9.7,21,17.9,98,0.0],[1795827600000,1017.4,8.3,18,18.0,98,0.0],[1795831200000,1017.3,9.0,17,18.2,99,0.0],[1795834800000,1016.9,10.4,31,17.9,95,0.0],[1795838400000,1016.6,8.6,37,17.9,98,0.0],[1795842000000,1016.7,9.4,31,18.0,100,0.0],[1795845600000,1017.1,10.1,30,18.3,100,0.0],[1795849200000,1017.2,8.6,28,18.7,99,0.0],[1795852800000,1017.0,6.5,316,19.9,100,0.0],[1795856400000,1016.6,6.8,271,20.0,98,0.0],[1795860000000,1015.8,10.1,279,20.1,94,0.0],[1795863600000,1015.1,13.3,287,20.2,73,0.0],[1795867200000,1014.7,14.4,286,20.2,38,0.0],[1795870800000,1014.1,16.9,305,20.2,84,0.0],[1795874400000,1013.7,16.6,294,20.1,97,0.0],[1795878000000,1013.8,17.3,317,19.9,95,0.0],[1795881600000,1013.9,16.6,354,19.5,96,0.0],[1795885200000,1013.7,14.8,16,18.9,99,0.0],[1795888800000,1013.5,12.6,23,18.9,100,0.0],[1795892400000,1013.4,11.5,37,18.8,100,0.0],[1795896000000,1013.3,10.8,42,18.8,100,0.0],[1795899600000,1013.0,9.4,41,18.7,100,0.0],[1795903200000,1012.6,8.3,31,18.5,99,0.0],[1795906800000,1012.0,10.4,27,18.0,100,0.0],[1795910400000,1011.9,11.9,30,17.8,100,0.0],[1795914000000,1011.7,11.5,37,17.8,99,0.0],[1795917600000,1011.3,13.0,46,17.1,100,0.0],[1795921200000,1011.2,12.6,45,17.1,100,0.0],[1795924800000,1011.2,9.4,51,17.0,98,0.0],[1795928400000,1011.3,6.8,77,17.3,93,0.0],[1795932000000,1011.9,7.6,94,18.1,94,0.0],[1795935600000,1012.3,10.4,99,19.2,82,0.0],[1795939200000,1012.4,7.9,100,19.7,48,0.0],[1795942800000,1012.4,14.4,222,19.8,3,0.0],[1795946400000,1011.9,18.7,270,20.0,10,0.0],[1795950000000,1011.5,16.9,280,20.1,12,0.0],[1795953600000,1011.4,11.5,258,20.0,12,0.0],[1795957200000,1011.5,10.4,247,19.9,9,0.0],[1795960800000,1011.8,6.8,210,19.9,16,0.0],[1795964400000,1012.1,6.8,218,19.8,10,0.0],[1795968000000,1012.5,7.2,279,19.4,8,0.0],[1795971600000,1012.7,8.3,340,18.9,5,0.0],[1795975200000,1012.8,9.4,7,18.3,13,0.0],[1795978800000,1012.9,7.9,14,17.9,14,0.0],[1795982400000,1013.1,8.6,14,17.4,23,0.0],[1795986000000,1013.0,10.1,23,17.0,26,0.0],[1795989600000,1012.9,10.1,28,17.0,16,0.0],[1795993200000,1012.7,10.1,34,16.7,22,0.0],[1795996800000,1012.6,9.7,41,16.4,20,0.0],[1796018400000,1013.6,9.4,46,15.9,66,0.0],[1796040000000,1011.4,14.8,273,18.7,99,0.0],[1796061600000,1012.3,15.8,47,16.2,23,0.0],[1796083200000,1011.4,16.2,44,15.1,34,0.0],[1796104800000,1011.5,14.0,46,15.5,100,0.0],[1796126400000,1009.8,2.9,273,18.6,62,5.2],[1796148000000,1011.3,28.1,60,12.2,94,0.0],[1796169600000,1011.5,19.8,48,11.2,2,0.0],[1796191200000,1013.3,13.7,54,11.4,12,0.0],[1796212800000,1013.5,2.9,205,15.1,9,0.0],[1796234400000,1015.3,18.7,43,12.4,17,0.1],[1796256000000,1015.7,10.8,72,12.9,48,3.0],[1796277600000,1015.5,15.5,116,11.9,73,24.4],[1796299200000,1013.5,20.5,129,13.0,43,12.0],[1796320800000,1014.2,12.6,192,13.6,38,1.4],[1796342400000,1013.4,5.8,61,12.1,29,0.0]]},"kas":{"n":"Ka\u015f\u2013Finike","lat":36.2,"lng":29.64,"upd":"2026-11-27T09:20:00Z","src":"MET Norway (api.met.no)","h":[[1795773600000,1020.0,6.1,197,18.6,89,0.0],[1795777200000,1019.5,6.8,203,18.4,60,0.0],[1795780800000,1019.2,6.5,208,18.2,98,0.0],[1795784400000,1019.0,5.4,210,17.7,99,0.0],[1795788000000,1018.9,5.0,223,17.1,99,0.0],[1795791600000,1018.9,4.7,253,16.0,99,0.0],[1795795200000,1019.1,2.9,278,15.5,99,0.0],[1795798800000,1019.1,3.6,307,15.2,94,0.0],[1795802400000,1019.1,5.0,326,14.9,90,0.0],[1795806000000,1018.8,5.8,335,14.7,91,0.0],[1795809600000,1018.9,6.5,346,14.6,96,0.0],[1795813200000,1018.9,8.3,9,14.4,94,0.0],[1795816800000,1018.6,10.4,20,14.2,98,0.0],[1795820400000,1018.0,11.2,21,14.0,96,0.0],[1795824000000,1018.0,10.4,33,14.2,96,0.0],[1795834800000,1017.1,11.2,48,14.3,100,0.0],[1795845600000,1017.3,12.2,40,15.3,99,0.0],[1795856400000,1017.1,12.6,90,19.1,71,0.0],[1795867200000,1014.5,13.0,113,19.7,24,0.0],[1795878000000,1014.0,15.5,82,17.1,73,0.0],[1795888800000,1013.9,11.2,351,15.4,98,0.0],[1795899600000,1013.1,14.0,25,16.4,94,0.0],[1795910400000,1012.4,9.7,320,16.7,78,0.0],[1795921200000,1011.9,10.8,200,15.1,29,0.0],[1795932000000,1012.5,8.6,349,16.4,30,0.0],[1795942800000,1013.0,5.8,73,18.7,58,0.0],[1795953600000,1011.8,13.3,158,18.8,29,0.0],[1795964400000,1012.4,24.1,66,16.5,28,0.2],[1795975200000,1013.1,31.0,47,14.9,30,0.1],[1795986000000,1012.4,30.6,41,14.8,18,0.0],[1795996800000,1012.0,31.7,46,15.1,57,0.5],[1796018400000,1012.4,9.7,31,14.9,91,0.2],[1796040000000,1011.7,14.8,104,18.5,90,0.2],[1796061600000,1012.6,5.4,298,14.8,69,0.0],[1796083200000,1012.4,6.8,278,15.6,96,0.0],[1796104800000,1012.0,6.5,268,15.7,18,0.0],[1796126400000,1010.5,10.4,227,17.4,1,0.3],[1796148000000,1012.2,7.2,103,12.7,61,0.7],[1796169600000,1012.3,9.0,267,11.9,41,0.5]]}};
+const WKEYS=['yildiz','poyraz','gundogusu','kesisleme','kible','lodos','gunbatisi','karayel'];
+const angDiff=(a,b)=>Math.abs(((a-b)%360+540)%360-180);
+function regionOf(spot){let best=null,bd=1e9;for(const [id,r] of Object.entries(WX)){const d=Math.hypot((r.lat-spot.lat)*111,(r.lng-spot.lng)*89);if(d<bd){bd=d;best=Object.assign({id},r)}}return best}
+const wxCache=new Map();
+function wxAt(R,t){
+  const h=R&&R.h;if(!h||!h.length||t<h[0][0]-14*3600e3||t>h[h.length-1][0]+3*3600e3)return null;
+  const key=R.id+'|'+Math.round(t/6e5);if(wxCache.has(key))return wxCache.get(key);
+  let i=0;while(i<h.length-2&&h[i+1][0]<=t)i++;
+  const a=h[i],b=h[i+1]||a,f=b[0]>a[0]?Math.max(0,Math.min(1,(t-a[0])/(b[0]-a[0]))):0,L=k=>a[k]+(b[k]-a[k])*f;
+  let pr24=0;for(const r of h)if(r[0]>t-24*3600e3&&r[0]<=t)pr24+=r[6];
+  const o={p:L(1),ws:L(2),wd:f<.5?a[3]:b[3],temp:L(4),cc:L(5),pr:f<.5?a[6]:b[6],pr24,step:(b[0]-a[0])/3600e3,est:t<h[0][0]-30*60e3,wave:a[7]!=null&&b[7]!=null?L(7):null,sst:a[8]!=null&&b[8]!=null?L(8):null};
+  wxCache.set(key,o);return o;
+}
+function condFor(t,spot){
+  if(S.manual)return S.cond;
+  const R=regionOf(spot),x=wxAt(R,t);if(!x)return Object.assign({},S.cond,{auto:false});
+  const x3=wxAt(R,t-3*3600e3)||x,x3b=x3===x?wxAt(R,t+3*3600e3):null;
+  const dp=x3===x&&x3b?x3b.p-x.p:x.p-x3.p;
+  let on=0;for(let k=0;k<=6;k+=2){const y=wxAt(R,t-k*3600e3);if(!y)continue;const d=angDiff(y.wd,spot.f??200);if(d<90)on=Math.max(on,y.ws*Math.cos(d*rad))}
+  const lvl=['berrak','hafif','camur'];let cl=x.pr24>8?2:x.pr24>2?1:0;if(spot.t==='nehir'&&x.pr24>1)cl=Math.min(2,cl+1);
+  return{auto:true,x,R,
+    p:dp<-0.8?'dus':dp>0.8?'yuk':'sabit',
+    d:WKEYS[Math.round(x.wd/45)%8],
+    w:x.ws<10?'sakin':x.ws<25?'orta':x.ws<40?'sert':'firtina',
+    s:x.wave!=null&&isFinite(x.wave)?(x.wave<0.25?'carsaf':x.wave<0.6?'hafif':x.wave<1.3?(on>8||x.wave>0.9?'kopuk':'hafif'):'sert'):on>28?'sert':on>15?'kopuk':on>6||x.ws>12?'hafif':'carsaf',
+    c:lvl[cl]};
+}
+
+/* ---------- Durum ve kalıcılık ---------- */
+const KEY='rastgele.v1';
+let S={spots:DEF_SPOTS.slice(),spot:'evrenseki',catches:[],cond:{p:'sabit',d:'?',w:'orta',s:'hafif',c:'berrak'},chat:[],loc:{n:'Manavgat',lat:36.786,lng:31.443}};
+try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j)S=Object.assign(S,j)}catch(_){}
+if(!S.spots.length)S.spots=DEF_SPOTS.slice();
+if(!S.cond.d)S.cond.d='?';
+S.spots.forEach(s=>{if(s.f==null){const d=DEF_SPOTS.find(x=>x.id===s.id);s.f=d?d.f:200;if(d&&!s.q)s.q=d.q}});
+const saveLocal=()=>{try{localStorage.setItem(KEY,JSON.stringify({spots:S.spots,spot:S.spot,catches:S.catches,cond:S.cond,loc:S.loc,manual:!!S.manual}))}catch(_){}};
+let col=null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hm=t=>t==null?'—':new Date(t).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+const spotOf=id=>S.spots.find(s=>s.id===id)||S.spots[0];
+const spOf=id=>SP.find(s=>s.id===id);
+
+/* ---------- Puan modeli ---------- */
+const g=(dt,sig)=>Math.exp(-(dt*dt)/(2*sig*sig));
+function inBan(sp,d){if(!sp.ban)return false;const md=(d.getMonth()+1)*100+d.getDate();return md>=sp.ban[0][0]*100+sp.ban[0][1]&&md<=sp.ban[1][0]*100+sp.ban[1][1]}
+/* rüzgar meraya önden mi (on), yandan mı (side), arkadan mı (off) vuruyor */
+function windRel(spot,c){if(!c.d||!WIND[c.d])return null;const diff=Math.abs(((WIND[c.d][1]-(spot.f??200))%360+540)%360-180);return diff<60?'on':diff>120?'off':'side'}
+const strongW=c=>c.w==='sert'||c.w==='firtina';
+function danger(spot,c=condFor(selT,spot)){if(c.w==='firtina'&&spot.t!=='liman')return true;return strongW(c)&&windRel(spot,c)==='on'&&(spot.t==='kayalik'||spot.t==='nehir'||c.w==='firtina')}
+function why(spot,c=condFor(selT,spot)){
+  const r=windRel(spot,c),wn=WIND[c.d]?WIND[c.d][0].split(' ')[0]:'';
+  if(danger(spot,c))return`${wn||'Sert rüzgar'} önden vuruyor — ${spot.t==='kayalik'?'kayalıkta':'kıyıda'} dalga tehlikeli, gitme.`;
+  if(strongW(c)&&spot.t==='liman')return'Sert havada liman içi korunaklı; mendirek dibinde dip oltası.';
+  if(r==='on')return c.w==='sakin'?`${wn} önden, hafif: su canlanır.`:`${wn} önden vuruyor: köpük ve bulanık su — levrek ve sargoz için iyi.`;
+  if(r==='off')return`${wn} arkadan: deniz düz, uzun atış kolay; çipura için iyi, levrek nazlı.`;
+  if(r==='side')return`${wn} yandan: akıntı oluşur, sahteyi akıntıyla sür.`;
+  return{nehir:'Nehir ağzı: tatlı-tuzlu su karışımı yem getirir.',liman:'Mendirek ucu derin suya yakın.',kayalik:'Kaya dibi; köpüklü havada daha iyi.',kumsal:'Kumsal; gece ve dalga kırılma çizgisi.'}[spot.t];
+}
+function condAdj(sp,c,spot){
+  let a=0;
+  if(spot){const r=windRel(spot,c),st=strongW(c);
+    if(r==='on'){if(c.w!=='sakin')a+=sp.foam*.8;if(st&&spot.t==='kayalik')a-=.12}
+    if(r==='off'){a+=sp.foam>.1?-.05:.03;if(st)a+=.1}
+    if(st&&spot.t==='liman')a+=.12;}
+  a+={dus:.07,sabit:0,yuk:-.06}[c.p]||0;
+  a+={sakin:0,orta:.03,sert:-.08,firtina:-.35}[c.w]||0;
+  a+={carsaf:-.05,hafif:.03,kopuk:sp.foam,sert:-.2}[c.s]||0;
+  a+={berrak:-.02,hafif:sp.murk,camur:sp.murk>.05?.04:-.12}[c.c]||0;
+  return a;
+}
+function solunar(t,ev){
+  let s=0;
+  for(const m of ev.moon){const dt=(t-m.t)/60e3;
+    if(m.k==='up'||m.k==='down')s=Math.max(s,g(dt,50));else s=Math.max(s,.6*g(dt,30));}
+  return s;
+}
+function score(t,sp,spot,ev,phase,c){
+  const d=new Date(t);c=c||condFor(t,spot);
+  if(inBan(sp,d))return 0;
+  const tw=Math.max(ev.sunrise?g((t-ev.sunrise)/60e3,45):0,ev.sunset?g((t-ev.sunset)/60e3,45):0);
+  const dark=ev.sunrise&&ev.sunset?(t<ev.sunrise||t>ev.sunset):false;
+  const pf=(1+cos(4*PI*phase))/2;
+  let v=.16+.3*solunar(t,ev)+.3*tw*sp.tw+.08*pf+.16*(dark?sp.night:sp.day);
+  v=v*(.35+.65*sp.m[d.getMonth()])*(.4+.6*(sp.h[spot.t]||.5))+condAdj(sp,c,spot);
+  return Math.round(Math.max(0,Math.min(1,v))*100);
+}
+function dayModel(day0,spot){
+  const ev=dayEvents(day0,spot.lat,spot.lng);
+  const pts=[];
+  for(let t=day0;t<=day0+dayMs;t+=15*60e3){
+    const ph=moonIllum(t).phase,c=condFor(t,spot);let best=0,who=null;
+    for(const sp of SP){const v=score(t,sp,spot,ev,ph,c);if(v>best){best=v;who=sp}}
+    pts.push({t,v:best,sp:who});
+  }
+  return{ev,pts,il:moonIllum(day0+12*3600e3)};
+}
+
+/* ---------- Ay simgesi ---------- */
+function moonSvg(il,r=8,cls=''){
+  const f=il.f,wax=il.phase<.5,rx=Math.abs(1-2*f)*r;
+  let p;
+  if(wax)p=`M0 ${-r}A${r} ${r} 0 0 1 0 ${r}A${rx} ${r} 0 0 ${f<.5?0:1} 0 ${-r}Z`;
+  else p=`M0 ${-r}A${r} ${r} 0 0 0 0 ${r}A${rx} ${r} 0 0 ${f<.5?1:0} 0 ${-r}Z`;
+  return `<svg class="${cls}" viewBox="${-r-1} ${-r-1} ${2*r+2} ${2*r+2}" aria-hidden="true"><circle r="${r}" fill="#ffffff22" stroke="#ffffff55" stroke-width=".6"/><path d="${p}" fill="#f4f1e4"/></svg>`;
+}
+function phaseName(il){const p=il.phase;
+  if(p<.03||p>.97)return'Yeni ay';if(p<.22)return'Hilal (büyüyen)';if(p<.28)return'İlk dördün';if(p<.47)return'Şişkin (büyüyen)';
+  if(p<.53)return'Dolunay';if(p<.72)return'Şişkin (küçülen)';if(p<.78)return'Son dördün';return'Hilal (küçülen)'}
+
+/* ---------- Görünüm durumu ---------- */
+const today0=(()=>{const d=new Date();d.setHours(0,0,0,0);return d.getTime()})();
+let selDay=today0,selT=Date.now(),model=null;
+
+function renderChips(){
+  $('spotChips').innerHTML=S.spots.map(s=>`<button class="chip" data-id="${esc(s.id)}" aria-pressed="${s.id===S.spot}">${esc(s.n)}</button>`).join('');
+}
+function renderDays(){
+  const spot=spotOf(S.spot);let h='';const wk=[];
+  for(let i=0;i<7;i++){
+    const d0=today0+i*dayMs;const m=d0===selDay&&model?model:dayModel(d0,spot);
+    const best=Math.max(...m.pts.map(p=>p.v));
+    const bp=m.pts.filter(p=>p.t>Date.now()-30*60e3).sort((a,b)=>b.v-a.v)[0];if(bp)wk.push(Object.assign({d0},bp));
+    const d=new Date(d0);
+    h+=`<button class="day" data-d="${d0}" aria-pressed="${d0===selDay}">${i===0?'Bugün':d.toLocaleDateString('tr-TR',{weekday:'short'})}<span class="num">${best}</span>${moonSvg(m.il)}</button>`;
+  }
+  $('days').innerHTML=h;
+  $('week').innerHTML=wk.sort((a,b)=>b.v-a.v).slice(0,3).map(p=>`<button type="button" class="win" data-wt="${p.t}" data-wd="${p.d0}" style="width:100%;background:none;border:0;border-top:1px solid var(--line);color:inherit;font:inherit;text-align:left;cursor:pointer"><span class="tag ${p.v>=60?'hot':''}">${p.v}</span><span>${p.sp?fishSvg(p.sp):''}</span><div><b>${new Date(p.t).toLocaleDateString('tr-TR',{weekday:'long'})} ${hm(p.t-45*60e3)}–${hm(p.t+45*60e3)}</b><div class="note">${p.sp?esc(p.sp.n):''} · ${esc(spot.n)}</div></div></button>`).join('')||'<p class="note">Hesaplanıyor…</p>';
+}
+const ro=new ResizeObserver(()=>drawCurve());ro.observe($('curveFig'));
+function drawCurve(){
+  if(!model)return;const s=$('curve'),W=s.clientWidth,H=s.clientHeight;if(!W)return;
+  const pl=8,pr=8,pt=18,pb=56,iw=W-pl-pr,ih=H-pt-pb;
+  const x=t=>pl+(t-selDay)/dayMs*iw,y=v=>pt+ih-(v/100)*ih;
+  let out='';
+  for(const m of model.ev.moon){if(m.t<selDay||m.t>selDay+dayMs)continue;
+    const w=(m.k==='up'||m.k==='down'?120:60)*60e3/dayMs*iw;
+    out+=`<rect x="${x(m.t)-w/2}" y="${pt}" width="${w}" height="${ih}" fill="#ffffff" opacity="${m.k==='up'||m.k==='down'?.1:.06}" rx="4"/>`;}
+  for(const k of[0,25,50,75,100])out+=`<line x1="${pl}" x2="${W-pr}" y1="${y(k)}" y2="${y(k)}" stroke="#ffffff" opacity=".08"/>`;
+  const P=model.pts;
+  const line=P.map((p,i)=>`${i?'L':'M'}${x(p.t).toFixed(1)} ${y(p.v).toFixed(1)}`).join('');
+  out+=`<defs><linearGradient id="gw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff5a36" stop-opacity=".55"/><stop offset="1" stop-color="#ff5a36" stop-opacity="0"/></linearGradient></defs>`;
+  out+=`<path d="${line}L${x(selDay+dayMs)} ${pt+ih}L${x(selDay)} ${pt+ih}Z" fill="url(#gw)"/><path d="${line}" fill="none" stroke="#ff8a6a" stroke-width="2.5" stroke-linejoin="round"/>`;
+  const sun=(t,lbl)=>t?`<g transform="translate(${x(t)},${pt+ih})"><circle r="6" fill="#ffd27a"/><text y="18" text-anchor="middle" fill="#cfe9e7" font-size="11" font-family="Barlow">${lbl} ${hm(t)}</text></g>`:'';
+  out+=sun(model.ev.sunrise,W<420?'':'Doğuş')+sun(model.ev.sunset,W<420?'':'Batış');
+  for(const m of model.ev.moon){if(m.t<selDay||m.t>selDay+dayMs||!(m.k==='up'||m.k==='down'))continue;
+    out+=`<text x="${x(m.t)}" y="${pt-5}" text-anchor="middle" fill="#cfe9e7" font-size="11" font-family="Barlow">${m.k==='up'?'Ay tepede':'Ay altta'}</text>`;}
+  for(const k of W<420?[6,12,18]:[3,6,9,12,15,18,21])out+=`<text x="${x(selDay+k*3600e3)}" y="${pt+11}" text-anchor="middle" fill="#ffffff" opacity=".4" font-size="11" font-family="Barlow">${String(k).padStart(2,'0')}</text>`;
+  if(selT>=selDay&&selT<=selDay+dayMs){const cp=P.reduce((a,p)=>Math.abs(p.t-selT)<Math.abs(a.t-selT)?p:a);
+    out+=`<line class="now-line" x1="${x(selT)}" x2="${x(selT)}" y1="${pt}" y2="${pt+ih}" stroke="#fff" stroke-width="1.5" stroke-dasharray="3 3"/><circle cx="${x(cp.t)}" cy="${y(cp.v)}" r="6" fill="#fff" stroke="#ff5a36" stroke-width="3"/>`;}
+  /* rüzgar oku sırası: ok rüzgarın estiği yöne bakar */
+  const spot=spotOf(S.spot),R=regionOf(spot),stepH=W<420?3:2;
+  for(let k=stepH/2;k<24;k+=stepH){const t=selDay+k*3600e3,wx=wxAt(R,t);if(!wx)continue;
+    const cx=x(t),cy=H-15,on=angDiff(wx.wd,spot.f??200)<60,col=wx.ws>=25?'#ff5a36':on&&wx.ws>=10?'#ffd27a':'#cfe9e7';
+    out+=`<g transform="translate(${cx},${cy}) rotate(${wx.wd+180})"><path d="M0 -8 L4.5 4 L0 1.5 L-4.5 4Z" fill="${col}"/></g><text x="${cx+(W<420?0:9)}" y="${W<420?cy+15:cy+4}" text-anchor="${W<420?'middle':'start'}" fill="${col}" font-size="10.5" font-family="Barlow" font-weight="600">${Math.round(wx.ws)}</text>`;
+    if(wx.pr>0.05)out+=`<rect x="${cx-3}" y="${pt+ih-Math.min(30,wx.pr*6)}" width="6" height="${Math.min(30,wx.pr*6)}" fill="#8fd3ff" opacity=".6" rx="2"/>`;}
+  if(R&&wxAt(R,selDay+12*3600e3))out+=`<text x="${pl}" y="${H-28}" fill="#cfe9e7" opacity=".7" font-size="10.5" font-family="Barlow">Rüzgar km/s · sarı: meraya önden · turuncu: sert</text>`;
+  out+=`<rect x="${pl}" y="${pt}" width="${iw}" height="${ih}" fill="transparent" id="hit"/>`;
+  s.innerHTML=out;
+}
+function pickTime(ev){const s=$('curve'),r=s.getBoundingClientRect();const fx=(ev.clientX-r.left-8)/(r.width-16);
+  selT=selDay+Math.max(0,Math.min(1,fx))*dayMs;renderHeader();renderRank();drawCurve();renderWx();drawSky();}
+$('curve').addEventListener('pointerdown',e=>{pickTime(e);$('curve').setPointerCapture(e.pointerId)});
+$('curve').addEventListener('pointermove',e=>{if(e.buttons)pickTime(e)});
+
+function renderHeader(){
+  const d=new Date(selT);
+  $('dateLbl').textContent=d.toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long'})+' · '+hm(selT);
+  const cp=model.pts.reduce((a,p)=>Math.abs(p.t-selT)<Math.abs(a.t-selT)?p:a);
+  $('bigScore').innerHTML=`${cp.v}<sup>/100</sup>`;
+  const word=cp.v>=75?'Çok iyi':cp.v>=55?'İyi':cp.v>=35?'Orta':'Zayıf';
+  const isNow=Math.abs(selT-Date.now())<10*60e3;
+  $('verdict').innerHTML=`${isNow?'Şu an':hm(selT)+' için'} <b>${word}</b><br>${cp.sp?'En olası: '+esc(cp.sp.n):'Akşamı bekle'} · ${esc(spotOf(S.spot).n)}`;
+}
+function renderRank(){
+  const spot=spotOf(S.spot),ph=moonIllum(selT).phase,d=new Date(selT);
+  const arr=SP.map(sp=>({sp,v:score(selT,sp,spot,model.ev,ph)})).sort((a,b)=>b.v-a.v);
+  $('rankLead').textContent=`${hm(selT)} · ${spot.n} (${TYPES[spot.t]}). Eğriye dokunup saati değiştirebilirsin.`;
+  $('rank').innerHTML=arr.slice(0,6).map(({sp,v},i)=>`<div class="row"><div class="lab"><b>${fishSvg(sp)} ${esc(sp.n)}</b><span>${inBan(sp,d)?'<span class="tag ban">Av yasağı</span>':`<span class="num" style="font-size:20px">${v}</span>`}</span></div><div class="bar"><i class="${i===0?'hi':''}" style="width:${v}%"></i></div><p>${esc(sp.how)}${sp.min?` <span class="tag">min ${sp.min} cm</span>`:''}</p></div>`).join('');
+}
+function renderAstro(){
+  const ev=model.ev,il=model.il;const inD=m=>m.t>=selDay&&m.t<selDay+dayMs;
+  const maj=ev.moon.filter(m=>(m.k==='up'||m.k==='down')&&inD(m)),min=ev.moon.filter(m=>(m.k==='rise'||m.k==='set')&&inD(m));
+  /* en iyi iki pencere: 2 saat ayrık zirveler */
+  const P=model.pts.slice().sort((a,b)=>b.v-a.v),peaks=[];
+  for(const p of P){if(peaks.length>=3)break;if(peaks.every(q=>Math.abs(q.t-p.t)>2.5*3600e3))peaks.push(p);}
+  peaks.sort((a,b)=>a.t-b.t);
+  $('windows').innerHTML=peaks.map(p=>`<div class="win"><span class="tag ${p.v>=60?'hot':''}">${p.v}</span><div><b>${hm(p.t-45*60e3)} – ${hm(p.t+45*60e3)}</b><div class="note">${p.sp?esc(p.sp.n)+' için en iyi pencere':''}</div></div></div>`).join('');
+  const rows=[['Gün doğumu',hm(ev.sunrise)],['Gün batımı',hm(ev.sunset)]];
+  maj.forEach(m=>rows.push([m.k==='up'?'Büyük periyot (ay tepede)':'Büyük periyot (ay altta)',`${hm(m.t-60*60e3)}–${hm(m.t+60*60e3)}`]));
+  min.forEach(m=>rows.push([m.k==='rise'?'Küçük periyot (ay doğuşu)':'Küçük periyot (ay batışı)',`${hm(m.t-30*60e3)}–${hm(m.t+30*60e3)}`]));
+  rows.push(['Ay',`${phaseName(il)} · %${Math.round(il.f*100)}`]);
+  $('astro').innerHTML=rows.map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join('');
+}
+function renderConds(){
+  $('manualOn').checked=!!S.manual;
+  $('conds').innerHTML=COND.map(c=>`<label>${c.l}</label><div class="seg" role="group" aria-label="${c.l}">${c.o.map(o=>`<button type="button" data-k="${c.k}" data-v="${o[0]}" aria-pressed="${S.cond[c.k]===o[0]}">${o[1]}</button>`).join('')}</div>`).join('');
+  const sp=spotOf(S.spot);
+  $('windyLink').href=`https://www.windy.com/${sp.lat}/${sp.lng}?waves,${sp.lat},${sp.lng},11`;
+  let w='';
+  const cc=condFor(selT,sp);
+  if(cc.w==='firtina'||cc.s==='sert'||danger(sp))w=`<div class="alert">${esc(danger(sp)?why(sp):'Sert dalga / fırtına: kayalık ve mendirek ucunda dalga insanı alır.')} Korunaklı liman içi ya da hiç. Can yeleği ve kaymaz ayakkabı.</div>`;
+  $('safety').innerHTML=w;
+}
+function recompute(){
+  const spot=spotOf(S.spot);model=dayModel(selDay,spot);
+  renderChips();renderHeader();drawCurve();renderRank();renderAstro();renderConds();renderWx();drawSky();renderNear();
+}
+const lblOf=(k,v)=>COND.find(x=>x.k===k).o.find(o=>o[0]===v)?.[1]||'—';
+function renderWx(){
+  const spot=spotOf(S.spot),c=condFor(selT,spot),x=c.x;
+  if(!x){
+    $('wxLine').innerHTML=S.manual?'<span>Elle girilen koşullar kullanılıyor</span>':'<span>Tahmin yok · ay ve saat hesabı</span>';
+    $('wxCard').innerHTML=`<p class="note">${S.manual?'Otomatik tahmin kapalı; aşağıda girdiğin koşullar kullanılıyor.':'Bu saat için tahmin verisi yok (tahmin yaklaşık 7 gün ileriyi kapsar).'}</p>`;return}
+  const x3=wxAt(c.R,selT-3*3600e3)||x,arrow={dus:'↘ düşüyor',sabit:'→ sabit',yuk:'↗ yükseliyor'}[c.p];
+  const wn=WIND[c.d][0].split(' ')[0];
+  $('wxLine').innerHTML=`${x.est?'<span>≈ geçmiş saat, tahmini</span>':''}<span>${esc(wn)} ${Math.round(x.ws)} km/s</span>${x.est?'':`<span>${Math.round(x.temp)}°C</span>`}<span>${Math.round(x.p)} hPa ${arrow.split(' ')[0]}</span>${x.wave!=null?`<span>Dalga ${x.wave.toFixed(1).replace('.',',')} m</span>`:''}${x.sst!=null?`<span>Deniz ${Math.round(x.sst)}°C</span>`:`<span>Bulut %${Math.round(x.cc)}</span>`}`;
+  const upd=c.R.upd?new Date(c.R.upd):null,ago=upd?Math.round((Date.now()-upd)/3600e3):null;
+  $('wxCard').innerHTML=`<div class="wxg">
+   <div><small>Rüzgar</small><b>${esc(wn)} ${Math.round(x.ws)}</b><small>km/s · ${esc(lblOf('w',c.w).split(' (')[0])}</small></div>
+   <div><small>Bu merada deniz</small><b>${esc(lblOf('s',c.s))}</b><small>${x.wave!=null?'dalga '+x.wave.toFixed(1).replace('.',',')+' m · ':''}${esc({on:'rüzgar önden',off:'rüzgar arkadan',side:'rüzgar yandan'}[windRel(spot,c)]||'')}</small></div>
+   <div><small>Basınç</small><b>${Math.round(x.p)}</b><small>hPa ${arrow}</small></div>
+   <div><small>Su</small><b>${esc(lblOf('c',c.c))}</b><small>24 saatte ${x.pr24.toFixed(1).replace('.',',')} mm yağış</small></div>
+   <div><small>${x.sst!=null?'Deniz suyu':'Hava'}</small><b>${x.sst!=null?Math.round(x.sst)+'°C':Math.round(x.temp)+'°C'}</b><small>${x.sst!=null?'hava '+Math.round(x.temp)+'°C · ':''}bulut %${Math.round(x.cc)}</small></div>
+   <div><small>Bölge</small><b style="font-size:19px">${esc(c.R.n)}</b><small>${ago!=null?(ago<1?'az önce':ago+' saat önce')+' güncellendi':''}</small></div></div>
+   <p class="note" style="margin-top:10px">${esc(why(spot,c))} Tahmin: ${esc(c.R.src||'MET Norway')}, arka planda düzenli yenilenir.</p>`;
+}
+/* ---------- Gökyüzü ve deniz sahnesi ---------- */
+const hx=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),mix=(a,b,f)=>'#'+hx(a).map((v,i)=>Math.round(v+(hx(b)[i]-v)*f).toString(16).padStart(2,'0')).join('');
+const SKY=[[-18,'#051520','#0b2c3b'],[-8,'#0e2740','#6b4566'],[-1,'#27476a','#f08a5d'],[6,'#2f6f8f','#f3b27a'],[18,'#1d6f87','#7cc4cc'],[60,'#16677f','#8fd0d6']];
+function skyAt(a){a=Math.max(-18,Math.min(60,a));let i=0;while(i<SKY.length-2&&SKY[i+1][0]<a)i++;const A=SKY[i],B=SKY[i+1],f=(a-A[0])/(B[0]-A[0]);return[mix(A[1],B[1],f),mix(A[2],B[2],f)]}
+function drawSky(){
+  const svg=$('sky');if(!svg||!model)return;const W=svg.clientWidth,H=svg.clientHeight;if(!W)return;
+  const spot=spotOf(S.spot),c=condFor(selT,spot),x=c.x||{ws:8,wd:200,cc:20};
+  const sun=bodyPos(selT,spot.lat,spot.lng,false),mo=bodyPos(selT,spot.lat,spot.lng,true),il=moonIllum(selT);
+  const [top,bot]=skyAt(sun.alt),hz=H-66,dark=Math.max(0,Math.min(1,(-sun.alt-4)/8)),cc=x.cc/100;
+  const px=az=>W/2+Math.max(-1,Math.min(1,az/100))*(W/2-40),py=al=>hz-Math.max(-8,al)/70*(hz-30);
+  let o=`<defs><linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bot}"/></linearGradient>
+  <radialGradient id="glow"><stop offset="0" stop-color="#fff3c4" stop-opacity=".9"/><stop offset=".35" stop-color="#ffd27a" stop-opacity=".35"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></radialGradient>
+  <radialGradient id="mglow"><stop offset="0" stop-color="#f4f1e4" stop-opacity=".5"/><stop offset="1" stop-color="#f4f1e4" stop-opacity="0"/></radialGradient>
+  <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${mix('#17677a',bot,.25)}"/><stop offset="1" stop-color="var(--sea)" style="stop-color:var(--sea)"/></linearGradient>
+  <filter id="blur"><feGaussianBlur stdDeviation="8"/></filter></defs>
+  <rect width="${W}" height="${H}" fill="url(#sk)"/>`;
+  /* yıldızlar */
+  if(dark>0){let r=7;const rnd=()=>(r=(r*9301+49297)%233280)/233280;for(let i=0;i<70;i++){const sx=rnd()*W,sy=rnd()*hz*.92,sz=rnd()*1.3+.3;o+=`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${sz.toFixed(2)}" fill="#fff" opacity="${(dark*(1-cc)*(.35+rnd()*.65)).toFixed(2)}"/>`}}
+  /* güneş */
+  if(sun.alt>-6){const sx=px(sun.az),sy=py(sun.alt);o+=`<circle cx="${sx}" cy="${sy}" r="70" fill="url(#glow)" opacity="${(1-cc*.6).toFixed(2)}"/><circle cx="${sx}" cy="${sy}" r="17" fill="#fff1c9" opacity="${(1-cc*.5).toFixed(2)}"/>`}
+  /* ay */
+  if(mo.alt>-4){const mx=px(mo.az),my=py(mo.alt),r=13,f=il.f,wax=il.phase<.5,rx=Math.abs(1-2*f)*r;
+    const pth=wax?`M0 ${-r}A${r} ${r} 0 0 1 0 ${r}A${rx} ${r} 0 0 ${f<.5?0:1} 0 ${-r}Z`:`M0 ${-r}A${r} ${r} 0 0 0 0 ${r}A${rx} ${r} 0 0 ${f<.5?1:0} 0 ${-r}Z`;
+    o+=`<g transform="translate(${mx},${my})" opacity="${(.55+.45*dark)*(1-cc*.5)}"><circle r="${36}" fill="url(#mglow)" opacity="${f}"/><circle r="${r}" fill="#ffffff" opacity=".12"/><path d="${pth}" fill="#f4f1e4"/></g>`}
+  /* bulutlar */
+  const nc=Math.round(cc*7);for(let i=0;i<nc;i++){const cx=((i*0.37+0.11)%1)*W,cy=hz*(.12+((i*0.53)%1)*.45),w=90+((i*71)%60);
+    o+=`<g filter="url(#blur)" opacity="${(.25+cc*.4).toFixed(2)}"><ellipse cx="${cx}" cy="${cy}" rx="${w}" ry="${w*.28}" fill="${dark>.5?'#3c5563':'#ffffff'}"/><ellipse cx="${cx+w*.4}" cy="${cy-8}" rx="${w*.6}" ry="${w*.25}" fill="${dark>.5?'#3c5563':'#ffffff'}"/></g>`}
+  /* rüzgar çizgileri: rüzgarın doğu-batı bileşenine göre akar */
+  const ew=-Math.sin(x.wd*rad),spd=Math.max(1.6,9-x.ws/5);
+  if(x.ws>=6)for(let i=0;i<Math.min(9,2+x.ws/4);i++){const sy=hz*(.2+((i*0.41)%1)*.65),len=30+x.ws*1.6;
+    o+=`<line class="streak" x1="0" y1="${sy}" x2="${len}" y2="${sy}" stroke="#fff" stroke-opacity="${.14+Math.min(.25,x.ws/150)}" stroke-width="1.4" stroke-linecap="round" style="--sp:${(spd+(i%3)).toFixed(1)}s;--from:${ew>0?-len:W}px;--to:${ew>0?W:-len}px;animation-delay:-${i*0.7}s"/>`}
+  /* dalgalar: genlik meradaki deniz durumuna göre */
+  const A={carsaf:2,hafif:5,kopuk:9,sert:14}[c.s]||5,cols=[mix('#2a8a9c',bot,.2),'#15606f','var(--sea)'];
+  [[0,.9,'wave1',150],[1,1,'wave2',210],[2,1.15,'wave3',120]].forEach(([k,amp,cls,per],j)=>{
+    const y0=hz+j*(H-hz)*.32,a=A*amp*(1-j*.15);let d=`M0 ${H}L0 ${y0}`;for(let xx=0;xx<=W*2+per;xx+=per/2)d+=`Q${xx+per/4} ${y0-(((xx/(per/2))%2)?-a:a)} ${xx+per/2} ${y0}`;d+=`L${W*2+per} ${H}Z`;
+    o+=`<path class="${cls}" style="--per:-${per*2}px${j===2?';fill:var(--sea)':''}" d="${d}" ${j===2?'':`fill="${cols[j]}"`} opacity="${j===2?1:.9}"/>`;
+    if(j===0&&(c.s==='kopuk'||c.s==='sert'))for(let xx=per*.25;xx<W*2;xx+=per)o+=`<path class="${cls}" style="--per:-${per*2}px" d="M${xx} ${y0-a+1}q8 -4 16 0" stroke="#fff" stroke-opacity=".7" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  });
+  /* yansıma */
+  const ref=sun.alt>-4?[px(sun.az),'#ffd9a0',(1-cc*.6)*.55]:mo.alt>0?[px(mo.az),'#f4f1e4',il.f*.4*(1-cc*.6)]:null;
+  if(ref)for(let i=0;i<6;i++){const yy=hz+8+i*((H-hz-10)/6),w=26-i*3+((i*7)%5);o+=`<rect x="${ref[0]-w/2}" y="${yy}" width="${w}" height="2.2" rx="1" fill="${ref[1]}" opacity="${(ref[2]*(1-i/7)).toFixed(2)}"/>`}
+  svg.innerHTML=o;
+}
+new ResizeObserver(()=>drawSky()).observe($('scene'));
+function fishSvg(sp){const col={levrek:'#9fb6bf',cipura:'#d9c27a',sargoz:'#b7c0c6',karagoz:'#8f9aa3',lufer:'#5f8fae',akya:'#c7cdb0',kefal:'#a3aeb5',mirmir:'#cbb79a',istavrit:'#7fa7c4',barakuda:'#8aa1a8',kaya:'#9c8a72'}[sp.id]||'#9fb6bf';
+  return`<svg class="fish" viewBox="0 0 30 20" aria-hidden="true"><path d="M2 10C6 3 16 2.5 21 10C16 17.5 6 17 2 10Z" fill="${col}"/><path d="M20 10L28 4.5L26.5 10L28 15.5Z" fill="${col}"/><path d="M9 4.6Q12 1.5 15 4.2" fill="${col}" stroke="${col}"/><circle cx="6.3" cy="9" r="1.3" fill="#0c2a31"/><path d="M5 12.2Q10 13.6 16 12" stroke="#0c2a31" stroke-opacity=".25" fill="none"/></svg>`}
+$('spotChips').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;S.spot=b.dataset.id;saveLocal();recompute();renderDays();});
+$('days').addEventListener('click',e=>{const b=e.target.closest('.day');if(!b)return;
+  const nd=+b.dataset.d;const hrs=selT-selDay;selDay=nd;selT=nd+(nd===today0?Date.now()-today0:hrs);recompute();renderDays();});
+$('conds').addEventListener('click',e=>{const b=e.target.closest('button[data-k]');if(!b)return;S.cond[b.dataset.k]=b.dataset.v;S.manual=true;saveLocal();recompute();renderDays();});
+$('manualOn').addEventListener('change',e=>{S.manual=e.target.checked;saveLocal();recompute();renderDays();});
+
+/* ---------- Meralar ---------- */
+let editSpot=null;
+function renderSpots(){
+  $('spotList').innerHTML=S.spots.map(s=>`<div class="entry"><div><b>${esc(s.n)}</b><div class="meta">${TYPES[s.t]||''} · ${(+s.lat).toFixed(3)}, ${(+s.lng).toFixed(3)}</div></div><div style="display:flex;gap:6px"><button class="btn" data-ed="${esc(s.id)}" type="button">Düzenle</button>${S.spots.length>1?`<button class="btn ghost" data-del="${esc(s.id)}" type="button" aria-label="Sil">Sil</button>`:''}</div></div>`).join('');
+  $('cSpot').innerHTML=S.spots.map(s=>`<option value="${esc(s.id)}">${esc(s.n)}</option>`).join('');$('cSpot').value=S.spot;
+}
+$('spotList').addEventListener('click',e=>{
+  const ed=e.target.closest('[data-ed]'),del=e.target.closest('[data-del]');
+  if(ed){const s=spotOf(ed.dataset.ed);editSpot=s.id;$('sName').value=s.n;$('sType').value=s.t;$('sFace').value=String(s.f??225);location.hash='yakin';$('sLat').value=s.lat;$('sLng').value=s.lng;$('spotFormTitle').textContent='Merayı düzenle';$('sCancel').hidden=false;$('sName').focus();}
+  if(del){const id=del.dataset.del;if(del.dataset.sure){S.spots=S.spots.filter(s=>s.id!==id);if(S.spot===id)S.spot=S.spots[0].id;persistSpots();renderSpots();recompute();renderDays();}else{del.dataset.sure=1;del.textContent='Emin misin?';}}
+});
+$('sCancel').addEventListener('click',()=>{editSpot=null;$('spotForm').reset();$('spotFormTitle').textContent='Yeni mera ekle';$('sCancel').hidden=true});
+$('spotForm').addEventListener('submit',e=>{e.preventDefault();
+  const lat=parseFloat(String($('sLat').value).replace(',','.')),lng=parseFloat(String($('sLng').value).replace(',','.'));
+  if(!(lat>30&&lat<45&&lng>20&&lng<46)){$('sLat').setCustomValidity('Türkiye kıyısında bir konum gir');$('sLat').reportValidity();$('sLat').setCustomValidity('');return}
+  const prev=editSpot?spotOf(editSpot):null;const o={id:editSpot||('m'+Date.now().toString(36)),n:$('sName').value.trim(),t:$('sType').value,lat,lng,f:+$('sFace').value,q:prev&&prev.n===$('sName').value.trim()?prev.q:undefined};
+  if(editSpot)S.spots=S.spots.map(s=>s.id===editSpot?o:s);else S.spots.push(o);
+  S.spot=o.id;editSpot=null;$('spotForm').reset();$('sCancel').hidden=true;$('spotFormTitle').textContent='Yeni mera ekle';
+  persistSpots();renderSpots();recompute();renderDays();
+});
+
+/* ---------- Yakınımda: konuma göre mera önerisi ---------- */
+let radiusKm=40,typeF='all',showAll=false,NM=null;
+const km=(a,b)=>{const dx=(b.lng-a.lng)*Math.cos(rad*a.lat)*111.32,dy=(b.lat-a.lat)*110.57;return{d:Math.hypot(dx,dy),dx,dy}};
+const mapsDir=s=>'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(s.q||(s.lat+','+s.lng));
+function allSpots(){const m=new Map();MERA.forEach(s=>m.set(s.id,s));S.spots.forEach(s=>{if(!m.has(s.id))m.set(s.id,Object.assign({a:'Kendi meran'},s))});return[...m.values()]}
+function nearModel(){
+  const ev=model.ev,ph=moonIllum(selT).phase,mine=new Set(S.spots.map(s=>s.id));
+  const start=selDay===today0?Math.max(selDay,Date.now()-30*60e3):selDay;
+  const ts=[];for(let t=Math.ceil(start/(30*60e3))*30*60e3;t<=selDay+dayMs;t+=30*60e3)ts.push([t,moonIllum(t).phase]);
+  return allSpots().map(s=>{
+    const k=km(S.loc,s);let now=0,nowSp=null;const c0=condFor(selT,s);
+    for(const sp of SP){const v=score(selT,sp,s,ev,ph,c0);if(v>now){now=v;nowSp=sp}}
+    let pk={v:-1,t:null,sp:null};
+    for(const [t,p2] of ts){const c=condFor(t,s);for(const sp of SP){const v=score(t,sp,s,ev,p2,c);if(v>pk.v)pk={v,t,sp}}}
+    const dz=danger(s);
+    return{s,k,now,nowSp,pk,min:Math.round(k.d*1.35/45*60+3),dz,mine:mine.has(s.id),rank:(dz?-60:0)+now*.6+Math.max(0,pk.v)*.4-Math.max(0,k.d-3)*.45};
+  });
+}
+const inR=n=>n.k.d<=radiusKm&&(typeF==='all'||n.s.t===typeF);
+function renderNear(){
+  if(!model)return;NM=nearModel();
+  $('locName').textContent=S.loc.n;
+  $('towns').innerHTML=TOWNS.map(t=>`<button type="button" data-town="${esc(t[0])}" aria-pressed="${S.loc.n===t[0]}">${esc(t[0])}</button>`).join('');
+  $('radius').innerHTML=[[15,'15 km'],[40,'40 km'],[100,'100 km'],[9999,'Tümü']].map(r=>`<button type="button" data-r="${r[0]}" aria-pressed="${radiusKm===r[0]}">${r[1]}</button>`).join('');
+  $('typeF').innerHTML=[['all','Hepsi']].concat(Object.entries(TYPES)).map(t=>`<button type="button" data-t="${t[0]}" aria-pressed="${typeF===t[0]}">${esc(t[1])}</button>`).join('');
+  const L=NM.filter(inR).sort((a,b)=>b.rank-a.rank),shown=showAll?L:L.slice(0,6);
+  const isNow=Math.abs(selT-Date.now())<20*60e3;
+  $('nearTitle').textContent=isNow?'Şimdi gitmeye değer':hm(selT)+' için en iyiler';
+  $('nearList').innerHTML=shown.length?shown.map(n=>`<div class="entry"><div><b>${esc(n.s.n)}</b> <span class="tag">${TYPES[n.s.t]}</span>${n.dz?' <span class="tag ban">Tehlikeli</span>':''}${n.s.id===S.spot?' <span class="tag ok">Seçili</span>':''}
+    <div class="meta">${esc(n.s.a||'')} · ${n.k.d<1?'<1':n.k.d.toFixed(n.k.d<10?1:0)} km · motorla ~${n.min} dk</div>
+    <div class="meta">${esc(why(n.s))}</div>
+    ${n.pk.t?`<div class="meta"><b>En iyi:</b> ${hm(n.pk.t-45*60e3)}–${hm(n.pk.t+45*60e3)} · ${esc(n.pk.sp.n)} ${n.pk.v}</div>`:''}
+    ${n.s.note?`<div class="meta">${esc(n.s.note)}</div>`:''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn" type="button" data-pick="${esc(n.s.id)}">${n.mine?'Seç':'Seç ve ekle'}</button><a class="btn ghost" style="display:inline-flex;align-items:center;text-decoration:none" href="${mapsDir(n.s)}" target="_blank" rel="noopener">Yol tarifi</a></div></div>
+    <div style="text-align:right"><span class="num" style="font-size:34px;color:${n.now>=65?'var(--acc2)':'inherit'}">${n.now}</span><div class="note">${esc(n.nowSp?n.nowSp.n:'')}</div></div></div>`).join(''):'<p class="note">Bu çapta mera yok — çapı büyüt.</p>';
+  $('moreBtn').hidden=L.length<=6;$('moreBtn').textContent=showAll?'Daha az göster':`Hepsini göster (${L.length})`;
+  const best=NM.filter(n=>n.k.d<=40&&!n.dz).sort((a,b)=>b.rank-a.rank)[0];
+  $('nearTeaser').innerHTML=best?`<div><span class="note">${isNow?'Yakınında şu an en iyisi':'Bu saat için yakınında en iyisi'}</span><div style="font-weight:600;font-size:18px">${esc(best.s.n)}</div><div class="note">${best.k.d.toFixed(1)} km · ${esc(why(best.s))}</div></div><span class="num" style="font-size:40px;color:var(--acc2)">${best.now}</span>`:'';
+  drawRadar();
+}
+function drawRadar(){
+  const s=$('radar');if(!s||!NM)return;const W=s.clientWidth,H=s.clientHeight;if(!W)return;
+  const cx=W/2,cy=H/2,R=Math.min(W,H)/2-14;
+  const pts=NM.filter(inR);
+  const maxD=radiusKm>500?Math.max(5,...pts.map(n=>n.k.d))*1.05:radiusKm;
+  const pos=n=>{const r=R*Math.sqrt(Math.min(n.k.d,maxD)/maxD);const a=Math.hypot(n.k.dx,n.k.dy)||1;return[cx+r*n.k.dx/a,cy-r*n.k.dy/a]};
+  let o=`<circle cx="${cx}" cy="${cy}" r="${R}" style="fill:var(--sea)"/>`;
+  for(const f of[.25,.5,1]){const r=R*Math.sqrt(f);o+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#fff" stroke-opacity=".14"/><text x="${cx+4}" y="${cy-r+13}" fill="#cfe9e7" font-size="11" font-family="Barlow">${Math.round(maxD*f)} km</text>`}
+  o+=`<line x1="${cx}" y1="${cy-R}" x2="${cx}" y2="${cy+R}" stroke="#fff" stroke-opacity=".08"/><line x1="${cx-R}" y1="${cy}" x2="${cx+R}" y2="${cy}" stroke="#fff" stroke-opacity=".08"/>`;
+  o+=`<text x="${cx}" y="${cy-R-2}" text-anchor="middle" fill="currentColor" font-size="12" font-weight="700" font-family="Barlow" dy="-1">K</text>`;
+  const placed=[],top=new Set();for(const n of pts.slice().sort((a,b)=>b.rank-a.rank)){if(top.size>=(W<420?4:6))break;const [x,y]=pos(n);if(placed.every(([a,b])=>Math.abs(a-x)>70||Math.abs(b-y)>22)){placed.push([x,y]);top.add(n.s.id)}}
+  pts.sort((a,b)=>a.now-b.now).forEach(n=>{const [x,y]=pos(n);const c=n.dz?'#c62f1c':n.now>=65?'#ff5a36':n.now>=45?'#4fa3a5':'#2d5a63';
+    o+=`<g data-id="${esc(n.s.id)}" style="cursor:pointer"><circle cx="${x}" cy="${y}" r="${n.s.id===S.spot?17:14}" fill="${c}" stroke="#fff" stroke-width="${n.s.id===S.spot?3:1.2}"/><text x="${x}" y="${y+4.5}" text-anchor="middle" fill="#fff" font-size="13" font-weight="700" font-family="Barlow">${n.now}</text>${top.has(n.s.id)?`<text x="${x}" y="${y+30}" text-anchor="middle" fill="#fff" font-size="11.5" font-weight="600" font-family="Barlow" stroke="#0a3340" stroke-width="3" paint-order="stroke">${esc(n.s.n.split(/[ (\/]/).slice(0,2).join(' '))}</text>`:''}</g>`});
+  o+=`<circle cx="${cx}" cy="${cy}" r="7" fill="#fff"/><circle cx="${cx}" cy="${cy}" r="12" fill="none" stroke="#fff" stroke-opacity=".5" class="now-line"/>`;
+  s.innerHTML=o;
+}
+new ResizeObserver(()=>drawRadar()).observe($('radarFig'));
+function pickSpot(id){
+  const m=allSpots().find(s=>s.id===id);if(!m)return;
+  if(!S.spots.find(s=>s.id===id))S.spots.push({id:m.id,n:m.n,t:m.t,lat:m.lat,lng:m.lng,f:m.f,q:m.q});
+  S.spot=id;persistSpots();renderSpots();recompute();renderDays();
+}
+$('radar').addEventListener('click',e=>{const g=e.target.closest('g[data-id]');if(g){pickSpot(g.dataset.id);const el=document.querySelector(`[data-pick="${CSS.escape(g.dataset.id)}"]`);if(el)el.scrollIntoView({block:'center',behavior:'smooth'})}});
+$('nearList').addEventListener('click',e=>{const b=e.target.closest('[data-pick]');if(!b)return;pickSpot(b.dataset.pick);location.hash='bugun'});
+$('towns').addEventListener('click',e=>{const b=e.target.closest('[data-town]');if(!b)return;const t=TOWNS.find(x=>x[0]===b.dataset.town);setLoc(t[0],t[1],t[2])});
+$('radius').addEventListener('click',e=>{const b=e.target.closest('[data-r]');if(!b)return;radiusKm=+b.dataset.r;renderNear()});
+$('typeF').addEventListener('click',e=>{const b=e.target.closest('[data-t]');if(!b)return;typeF=b.dataset.t;renderNear()});
+$('moreBtn').addEventListener('click',()=>{showAll=!showAll;renderNear()});
+function setLoc(n,lat,lng,auto){S.loc={n,lat:+lat,lng:+lng,auto:!!auto};saveLocal();$('gpsMsg').textContent='';renderNear()}
+$('gpsBtn').addEventListener('click',()=>{
+  const fail=()=>{$('gpsMsg').textContent='Bu ekran konum izni alamıyor. İlçeni seç ya da Google Haritalar\'da bulunduğun yere basılı tut, çıkan sayıları aşağı yapıştır.'};
+  if(!navigator.geolocation)return fail();
+  $('gpsMsg').textContent='Konum aranıyor…';
+  try{navigator.geolocation.getCurrentPosition(p=>setLoc('Bulunduğun yer',p.coords.latitude.toFixed(4),p.coords.longitude.toFixed(4),true),fail,{timeout:8000,maximumAge:300000})}catch(_){fail()}
+});
+$('locForm').addEventListener('submit',e=>{e.preventDefault();
+  const m=$('locIn').value.match(/(-?\d{1,2}[.,]\d+)\s*[, ]\s*(-?\d{1,3}[.,]\d+)/);
+  const lat=m&&parseFloat(m[1].replace(',','.')),lng=m&&parseFloat(m[2].replace(',','.'));
+  if(!m||!(lat>30&&lat<45&&lng>20&&lng<46)){$('gpsMsg').textContent='Koordinat bulamadım. Haritada noktaya basılı tut; üstte çıkan "36.78, 31.44" gibi sayıları yapıştır. (Kısa paylaşım linklerinde koordinat olmaz.)';return}
+  setLoc('Seçtiğin nokta',lat,lng);$('locIn').value='';
+});
+
+/* ---------- Türler ---------- */
+function renderSpecies(){
+  const cm=new Date().getMonth();
+  $('species').innerHTML=SP.map(sp=>`<article class="card"><h3><span>${fishSvg(sp)} ${esc(sp.n)}</span> ${sp.min?`<span class="tag">min ${sp.min} cm</span>`:'<span class="tag">boy sınırı yok</span>'}</h3>
+  <div class="note"><i>${esc(sp.lat)}</i> · limit: ${sp.lim==='kg'?'toplam 5 kg içinde':esc(sp.lim)}${sp.ban?' · <b>15 Nisan–15 Mayıs av yasağı</b>':''}</div>
+  <div class="months">${sp.m.map((v,i)=>`<i class="${i===cm?'now':''}" style="opacity:${(.15+.85*v).toFixed(2)}" title="${MON[i]}"></i>`).join('')}</div>
+  <div class="ml">${MON.map(m=>`<span>${m[0]}</span>`).join('')}</div>
+  <p style="margin:10px 0 4px">${esc(sp.how)}</p>
+  <div class="note">En iyi mera: ${Object.entries(sp.h).sort((a,b)=>b[1]-a[1]).slice(0,2).map(x=>TYPES[x[0]]).join(', ')} · ${sp.night>=sp.day?'gece/alacakaranlık':'gündüz'}</div></article>`).join('');
+}
+
+/* ---------- Defter ---------- */
+$('cSp').innerHTML=SP.map(s=>`<option value="${s.id}">${esc(s.n)}</option>`).join('')+'<option value="diger">Diğer</option>';
+const localDT=t=>{const d=new Date(t);d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)};
+$('cTime').value=localDT(Date.now());
+const num=v=>{const n=parseFloat(String(v).replace(',','.'));return isFinite(n)?n:null};
+function legalCheck(){
+  const sp=spOf($('cSp').value),len=num($('cLen').value);let m='';
+  if(sp&&sp.min&&len!=null)m=len<sp.min?`<span class="tag ban">Yasal boyun altında</span> ${esc(sp.n)} en az ${sp.min} cm olmalı — canlı bırak.`:`<span class="tag ok">Yasal</span> ${esc(sp.n)} için ${sp.min} cm sınırının üstünde.`;
+  if(sp&&inBan(sp,new Date($('cTime').value||Date.now())))m=`<span class="tag ban">Av yasağı dönemi</span> ${esc(sp.n)} şu an avlanamaz.`;
+  $('legalMsg').innerHTML=m;
+}
+['cSp','cLen','cTime'].forEach(i=>$(i).addEventListener('input',legalCheck));
+$('catchForm').addEventListener('submit',async e=>{e.preventDefault();
+  const t=new Date($('cTime').value||Date.now()).getTime();const spot=spotOf($('cSpot').value);const sp=spOf($('cSp').value);
+  const d0=new Date(t);d0.setHours(0,0,0,0);const ev=dayEvents(d0.getTime(),spot.lat,spot.lng);const il=moonIllum(t);
+  const c={id:'c_'+Date.now().toString(36),t,sp:$('cSp').value,spot:spot.id,spotN:spot.n,len:num($('cLen').value),kg:num($('cKg').value),meth:$('cMeth').value,bait:$('cBait').value.trim(),note:$('cNote').value.trim(),
+    score:sp?score(t,sp,spot,ev,il.phase):null,moon:phaseName(il),cond:(({p,d,w,s,c})=>({p,d,w,s,c}))(condFor(t,spot))};
+  S.catches.unshift(c);saveLocal();renderLog();
+  $('catchForm').reset();$('cTime').value=localDT(Date.now());$('cSpot').value=S.spot;$('legalMsg').innerHTML='';
+  if(col){try{await col.doc(c.id).set(c)}catch(_){$('syncNote').textContent='Buluta yazılamadı; bu cihazda kayıtlı.'}}
+});
+function renderLog(){
+  const L=S.catches;
+  $('logList').innerHTML=L.length?L.map(c=>{const sp=spOf(c.sp);const under=sp&&sp.min&&c.len!=null&&c.len<sp.min;
+    return`<div class="entry"><div><b>${esc(sp?sp.n:'Diğer')}</b>${c.len!=null?` · ${esc(c.len)} cm`:''}${c.kg!=null?` · ${esc(c.kg)} kg`:''} ${under?'<span class="tag ban">boy altı</span>':''}
+    <div class="meta">${new Date(c.t).toLocaleString('tr-TR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} · ${esc(c.spotN||'')} · ${esc(c.meth)}${c.bait?' · '+esc(c.bait):''} · ${esc(c.moon||'')}${c.note?' · '+esc(c.note):''}</div></div>
+    <div style="text-align:right">${c.score!=null?`<span class="tag">puan ${esc(c.score)}</span>`:''}<br><button class="btn ghost" data-rm="${esc(c.id)}" type="button" style="min-height:36px;margin-top:4px">Sil</button></div></div>`}).join(''):'<p class="note">Henüz kayıt yok. İlk balığını yaz, Rastgele!</p>';
+  /* bugünün 5 kg takibi */
+  const kgToday=L.filter(c=>c.t>=today0&&c.t<today0+dayMs&&c.kg!=null&&spOf(c.sp)?.lim==='kg').map(c=>c.kg).sort((a,b)=>b-a);
+  const tot=kgToday.reduce((a,b)=>a+b,0),rest=kgToday.slice(1).reduce((a,b)=>a+b,0);
+  const over=kgToday[0]>5?rest>0:(tot>5||rest>4);
+  $('todayKg').innerHTML=`<h3>Bugünkü torba</h3><div class="bar" style="height:14px"><i class="${over?'hi':''}" style="width:${Math.min(100,tot/5*100)}%"></i></div><p class="note">${tot.toFixed(1).replace('.',',')} / 5 kg ${over?'— <b>limit aşıldı, fazlasını bırak</b>':kgToday.length?'— limit içinde':''}</p>`;
+  /* istatistik */
+  if(!L.length){$('stats').innerHTML='<p class="note">İlk avını ekleyince istatistikler burada çıkar.</p>';return}
+  const hrs=Array(24).fill(0);L.forEach(c=>hrs[new Date(c.t).getHours()]++);const mx=Math.max(...hrs);
+  const cnt=(f)=>{const m={};L.forEach(c=>{const k=f(c);if(k)m[k]=(m[k]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,3)};
+  const top=(lbl,a)=>a.length?`<dt>${lbl}</dt><dd>${a.map(x=>esc(x[0])+' ('+x[1]+')').join(', ')}</dd>`:'';
+  $('stats').innerHTML=`<div class="hist" aria-label="Saatlere göre av">${hrs.map(v=>`<i style="height:${mx?v/mx*100:0}%"></i>`).join('')}</div><div class="hl"><span>00</span><span>06</span><span>12</span><span>18</span></div>
+  <dl class="kv" style="margin-top:12px;grid-template-columns:auto minmax(0,1fr)">${top('Tür',cnt(c=>spOf(c.sp)?.n||'Diğer'))}${top('Mera',cnt(c=>c.spotN))}${top('Yem',cnt(c=>c.bait))}${top('Ay',cnt(c=>c.moon))}</dl><p class="note">${L.length} kayıt</p>`;
+  $('stats').querySelectorAll('dd').forEach(d=>{d.style.whiteSpace='normal';d.style.textAlign='left'});
+}
+$('logList').addEventListener('click',async e=>{const b=e.target.closest('[data-rm]');if(!b)return;
+  if(!b.dataset.sure){b.dataset.sure=1;b.textContent='Emin misin?';return}
+  const id=b.dataset.rm;S.catches=S.catches.filter(c=>c.id!==id);saveLocal();renderLog();if(col){try{await col.doc(id).delete()}catch(_){}}});
+$('copyLog').addEventListener('click',async()=>{
+  const txt=S.catches.map(c=>[new Date(c.t).toLocaleString('tr-TR'),spOf(c.sp)?.n||'Diğer',c.len?c.len+' cm':'',c.kg?c.kg+' kg':'',c.spotN,c.meth,c.bait,c.moon,c.note].filter(Boolean).join(' | ')).join('\n');
+  try{await navigator.clipboard.writeText(txt||'Defter boş');$('copyMsg').textContent='Kopyalandı.'}catch(_){$('copyMsg').textContent='Kopyalanamadı.'}});
+
+/* ---------- Yapay zekâ: tanıma, koç, defter yorumu ---------- */
+let sample=null;
+function ctx(){
+  const spot=spotOf(S.spot),ph=moonIllum(selT);
+  const rk=SP.map(sp=>({n:sp.n,v:score(selT,sp,spot,model.ev,ph.phase)})).sort((a,b)=>b.v-a.v).slice(0,4).map(r=>r.n+' '+r.v).join(', ');
+  const c=condFor(selT,spot),lbl=k=>COND.find(x=>x.k===k).o.find(o=>o[0]===c[k])?.[1];
+  return `Bağlam: Antalya Manavgat kıyısı, kıyıdan amatör balıkçı (spin ve dip). Mera: ${spot.n} (${TYPES[spot.t]}). Tarih/saat: ${new Date(selT).toLocaleString('tr-TR')}. Gün doğumu ${hm(model.ev.sunrise)}, batımı ${hm(model.ev.sunset)}. Ay: ${phaseName(ph)} %${Math.round(ph.f*100)}. Koşullar (hava tahmininden otomatik): basınç ${lbl('p')}, rüzgar yönü ${lbl('d')}, gücü ${lbl('w')}, meraya göre: ${why(spot)}, deniz ${lbl('s')}, su ${lbl('c')}. Uygulamanın tür puanları (0-100): ${rk}. Yasal boylar: levrek 25, çipura 20, sargoz 21, karagöz 18, lüfer 18, kefal 30, akya 40 (1 adet, 15 Nis–15 May yasak), istavrit 13 cm; kg ile sınırlılarda toplam 5 kg. Orfoz yasak. Balon balığı zehirli.`;
+}
+const SYS='Sen Manavgat kıyısını iyi bilen, sade Türkçe konuşan deneyimli bir kıyı balıkçısısın. Kısa ve uygulanabilir cevap ver (en fazla 8 cümle ya da kısa madde). Takım, yem/sahte, saat ve atış yeri öner. Yasal boy ve güvenlik konusunda dürüst ol. Emin olmadığın yerel bilgiyi uydurma.';
+function renderChat(){$('chat').innerHTML=S.chat.map(m=>`<div class="msg ${m.r==='user'?'u':'a'}">${esc(m.c)}</div>`).join('')}
+$('quickQ').innerHTML=['Şimdi ne atayım?','Bu akşam hangi saat?','Levrek için takım öner','Kayalıkta sargoz nasıl tutulur?'].map(q=>`<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join('');
+$('quickQ').addEventListener('click',e=>{const b=e.target.closest('[data-q]');if(b){$('askIn').value=b.dataset.q;ask()}});
+$('askForm').addEventListener('submit',e=>{e.preventDefault();ask()});
+let busy=false;
+async function ask(){
+  const q=$('askIn').value.trim();if(!q||busy)return;
+  if(!sample){$('aiNote').textContent='Usta şu an bağlanamıyor (bu görünümde yapay zekâ izni yok). Sayfayı Claude uygulamasında aç.';return}
+  busy=true;S.chat.push({r:'user',c:q});S.chat.push({r:'assistant',c:'…'});renderChat();$('askIn').value='';
+  let msgs=S.chat.slice(0,-1).slice(-9).map(m=>({role:m.r,content:m.c}));
+  while(msgs.length&&msgs[0].role!=='user')msgs.shift();
+  msgs[msgs.length-1]={role:'user',content:SYS+'\n\n'+ctx()+'\n\nSoru: '+q};
+  try{const r=await sample(msgs,{cache:false,onText:({text})=>{S.chat[S.chat.length-1].c=text;renderChat()}});S.chat[S.chat.length-1].c=r.text}
+  catch(err){S.chat[S.chat.length-1].c=err&&err.code==='rate_limited'?'Biraz yavaş — bir dakika sonra tekrar sor.':'Cevap alınamadı.';}
+  busy=false;renderChat();
+}
+let imgBlob=null;
+$('fishImg').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;imgBlob=f;const u=URL.createObjectURL(f);$('fishPrev').src=u;$('fishPrev').hidden=false;$('idBtn').disabled=!sample;$('idOut').innerHTML=sample?'':'<p class="note">Fotoğraf tanıma bu görünümde kapalı.</p>'});
+$('idBtn').addEventListener('click',async()=>{
+  if(!imgBlob||!sample)return;$('idBtn').disabled=true;$('idOut').innerHTML='<p class="note">Bakıyorum…</p>';
+  const prompt=SYS+'\n\nFotoğraftaki balığı tanımla. Akdeniz Türkiye kıyısı. Sadece JSON döndür: {"tur":"Türkçe yaygın adı","latince":"...","emin":"yüksek|orta|düşük","boy_cm":sayı ya da null (yalnızca görüntüde ölçek nesnesi varsa),"yasal_boy_cm":sayı ya da null,"zehirli":true/false,"yenir":true/false,"not":"1-2 cümle: ayırt edici özellik, yasal durum, pişirme önerisi"}. Yasal boylar: levrek 25, çipura 20, sargoz 21, karagöz 18, lüfer 18, kefal 30, akya 40, istavrit 13, sinarit 35, mercan 15, barbun/tekir 12, iskorpit/lipsöz 15. Orfoz avlamak yasak. Balon balığı (Lagocephalus) zehirlidir.';
+  try{const j=await sample.json(prompt,{images:[imgBlob],modelTier:'default'});
+    const sp=SP.find(s=>j&&j.tur&&String(j.tur).toLowerCase().includes(s.n.toLowerCase().split(' ')[0]));
+    let legal='';if(j.boy_cm&&j.yasal_boy_cm)legal=j.boy_cm<j.yasal_boy_cm?'<span class="tag ban">Boy altı — bırak</span>':'<span class="tag ok">Yasal boyda</span>';
+    $('idOut').innerHTML=`${j.zehirli?'<div class="alert">ZEHİRLİ — yeme, kimseye verme.</div>':''}<h3>${esc(j.tur||'Bilinmiyor')}</h3><p class="note"><i>${esc(j.latince||'')}</i> · güven: ${esc(j.emin||'?')}</p>
+    <dl class="kv">${j.boy_cm?`<dt>Tahmini boy</dt><dd>${esc(j.boy_cm)} cm</dd>`:''}${j.yasal_boy_cm?`<dt>Yasal en az</dt><dd>${esc(j.yasal_boy_cm)} cm</dd>`:''}<dt>Yenir mi</dt><dd>${j.yenir&&!j.zehirli?'Evet':'Hayır'}</dd></dl>
+    <p>${legal} ${esc(j.not||'')}</p>${sp?`<button class="btn" type="button" id="toLog" data-sp="${sp.id}" data-len="${esc(j.boy_cm||'')}">Deftere ekle</button>`:''}`;
+  }catch(err){$('idOut').innerHTML='<p class="note">Tanıyamadım. Balığı yandan, düz ve aydınlık çek, tekrar dene.</p>'}
+  $('idBtn').disabled=false;
+});
+$('idOut').addEventListener('click',e=>{const b=e.target.closest('#toLog');if(!b)return;$('cSp').value=b.dataset.sp;$('cLen').value=b.dataset.len;location.hash='defter';legalCheck();});
+$('analyzeBtn').addEventListener('click',async()=>{
+  if(!sample){$('analyzeOut').textContent='Yapay zekâ bu görünümde kapalı.';return}
+  if(S.catches.length<3){$('analyzeOut').textContent='Anlamlı bir yorum için en az 3 kayıt gerekli.';return}
+  const data=S.catches.slice(0,120).map(c=>({tarih:new Date(c.t).toLocaleString('tr-TR'),tur:spOf(c.sp)?.n||'Diğer',boy:c.len,kg:c.kg,mera:c.spotN,yontem:c.meth,yem:c.bait,ay:c.moon,puan:c.score,kosul:c.cond,not:c.note}));
+  $('analyzeOut').textContent='Defterine bakıyorum…';
+  try{const r=await sample(SYS+'\n\nAşağıdaki av defterini incele. 3–5 maddede örüntüleri söyle (hangi saat, ay evresi, mera, yem, deniz durumu daha çok getirmiş) ve bir sonraki çıkış için somut öneri ver. Az veriden kesin sonuç çıkarma; emin olmadığını söyle.\n\n'+JSON.stringify(data),{onText:({text})=>{$('analyzeOut').textContent=text}});$('analyzeOut').textContent=r.text}
+  catch(_){$('analyzeOut').textContent='Şu an yorum alınamadı.'}
+});
+
+/* ---------- Bulut senkron (db) ---------- */
+async function persistSpots(){saveLocal();if(col){try{await col.doc('spots').set({list:S.spots})}catch(_){}}}
+(async()=>{
+  try{
+    const [db,user,smp]=await Promise.all([claude.use('db'),claude.use('user'),claude.use('sample')]);
+    sample=smp||null;
+    if(db){try{db.collection('wx').onSnapshot(snap=>{let ch=false;
+      snap.docs.forEach(d=>{const v=d.data();if(!v||!Array.isArray(v.h)||!v.h.length)return;const cur=WX[d.id];
+        if(!cur||String(v.upd||'')>String(cur.upd||'')){WX[d.id]={n:String(v.n||d.id),lat:+v.lat,lng:+v.lng,upd:String(v.upd||''),src:String(v.src||''),h:v.h.map(r=>r.map(Number))};ch=true}});
+      if(ch){wxCache.clear();recompute();renderDays();}},()=>{})}catch(_){}}
+    if(!sample){$('aiNote').textContent='Yapay zekâ özellikleri bu görünümde kapalı.';$('idBtn').disabled=true}
+    const uid=user?await user.id():null;
+    if(!db||!uid){$('syncNote').textContent='Kayıtlar bu cihazda tutuluyor.';return}
+    col=db.collection('data/users/'+uid);let first=true;
+    const tm=setTimeout(()=>{$('syncNote').textContent='Buluta ulaşılamıyor; kayıtlar bu cihazda.'},10000);
+    col.onSnapshot(async snap=>{
+      if(!snap.metadata.fromCache)clearTimeout(tm);
+      const cs=[];let spots=null;
+      snap.docs.forEach(d=>{if(d.id==='spots')spots=d.data().list;else if(d.id.startsWith('c_'))cs.push(d.data())});
+      if(first&&!snap.metadata.fromCache){first=false;
+        const ids=new Set(cs.map(c=>c.id));
+        const missing=S.catches.filter(c=>!ids.has(c.id));
+        for(const c of missing){try{await col.doc(c.id).set(c)}catch(_){break}}
+        if(!spots){try{await col.doc('spots').set({list:S.spots})}catch(_){}}
+        $('syncNote').textContent='Defterin hesabına kaydediliyor, telefonu değiştirsen de kaybolmaz.';
+        if(missing.length)return;
+      }
+      if(cs.length||!S.catches.length)S.catches=cs.sort((a,b)=>b.t-a.t);
+      if(Array.isArray(spots)&&spots.length){S.spots=spots;if(!S.spots.find(s=>s.id===S.spot))S.spot=S.spots[0].id;}
+      saveLocal();renderLog();renderSpots();renderChips();
+    },err=>{clearTimeout(tm);$('syncNote').textContent='Kayıtlar bu cihazda tutuluyor.'});
+  }catch(_){}
+})();
+
+$('week').addEventListener('click',e=>{const b=e.target.closest('[data-wt]');if(!b)return;selDay=+b.dataset.wd;selT=+b.dataset.wt;recompute();renderDays();scrollTo({top:0,behavior:'smooth'})});
+
+/* ---------- Telefon uygulaması (APK): canlı hava + dalga, GPS ---------- */
+const APP=/RastgeleApp/.test(navigator.userAgent);
+const REG=Object.fromEntries(Object.entries(WX).map(([k,r])=>[k,{n:r.n,lat:r.lat,lng:r.lng}]));
+function applyWx(w){let ch=false;for(const [k,v] of Object.entries(w||{}))if(v&&Array.isArray(v.h)&&v.h.length>10){WX[k]=v;ch=true}if(ch){wxCache.clear();recompute();renderDays()}}
+let liveBusy=false;
+async function liveWx(force){
+  if(!APP||liveBusy)return;
+  let cache=null;try{cache=JSON.parse(localStorage.getItem('rastgele.wx')||'null')}catch(_){}
+  if(cache&&cache.wx)applyWx(cache.wx);
+  if(cache&&!force&&Date.now()-cache.at<45*60e3)return;
+  liveBusy=true;const out={};
+  await Promise.all(Object.entries(REG).map(async([id,r])=>{try{
+    const f=await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${r.lat}&longitude=${r.lng}&hourly=pressure_msl,wind_speed_10m,wind_direction_10m,temperature_2m,cloud_cover,precipitation&past_days=1&forecast_days=8&timeformat=unixtime&timezone=GMT`)).json();
+    let m=null;try{m=await (await fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${(r.lat-0.05).toFixed(2)}&longitude=${r.lng}&hourly=wave_height,sea_surface_temperature&past_days=1&forecast_days=8&timeformat=unixtime&timezone=GMT`)).json()}catch(_){}
+    const H=f.hourly,mi=new Map();if(m&&m.hourly&&m.hourly.time)m.hourly.time.forEach((t,i)=>mi.set(t,i));
+    const num=v=>v==null||!isFinite(+v)?null:+v;
+    out[id]={n:r.n,lat:r.lat,lng:r.lng,upd:new Date().toISOString(),src:'Open-Meteo (canlı, dalga dahil)',
+      h:H.time.map((t,i)=>{const j=mi.get(t);return[t*1000,num(H.pressure_msl[i]),num(H.wind_speed_10m[i]),num(H.wind_direction_10m[i]),num(H.temperature_2m[i]),num(H.cloud_cover[i]),num(H.precipitation[i])||0,j!=null?num(m.hourly.wave_height[j]):null,j!=null?num(m.hourly.sea_surface_temperature[j]):null]}).filter(x=>x[1]!=null&&x[2]!=null&&x[3]!=null)};
+  }catch(_){}}));
+  liveBusy=false;
+  if(Object.keys(out).length){try{localStorage.setItem('rastgele.wx',JSON.stringify({at:Date.now(),wx:out}))}catch(_){}applyWx(out)}
+}
+if(APP){
+  document.documentElement.classList.add('app');
+  $('aiNote').innerHTML='Yapay zekâ özellikleri (Usta, balık tanıma) Claude içinde çalışır: <a href="https://claude.ai/artifact/7fFEBAm16t1mzZNMKxqDQG">Claude\'da aç</a>';
+  $('idBtn').disabled=true;$('syncNote').textContent='Kayıtlar bu telefonda saklanır.';
+  $('analyzeBtn').hidden=true;
+  liveWx();
+  addEventListener('appresume',()=>{liveWx();if(selDay===today0){selT=Date.now();recompute()}});
+  setInterval(()=>liveWx(),30*60e3);
+  if(S.loc.auto!==false&&navigator.geolocation)try{navigator.geolocation.getCurrentPosition(p=>setLoc('Bulunduğun yer',p.coords.latitude.toFixed(4),p.coords.longitude.toFixed(4),true),()=>{},{timeout:10000,maximumAge:600000})}catch(_){}
+}
+
+/* ---------- Sekmeler ---------- */
+const VIEWS=['bugun','yakin','turler','defter','sor'];
+function route(){const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'bugun';
+  VIEWS.forEach(x=>{$('v-'+x).hidden=x!==v});
+  document.querySelectorAll('nav.tabs a').forEach(a=>{if(a.dataset.v===v)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+}
+addEventListener('hashchange',()=>{route();scrollTo(0,0)});
+
+route();recompute();renderDays();renderSpots();renderSpecies();renderLog();renderChat();
+setInterval(()=>{if(selDay===today0&&Math.abs(selT-Date.now())<20*60e3){selT=Date.now();renderHeader();drawCurve()}},60e3);
+}
+</script>
+</body>
+</html>
